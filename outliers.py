@@ -57,6 +57,12 @@ def trimmed_stats(data, norm, proportion, ignore_zero=True):
     # mean and standard deviation ignoring NaN
     ave = np.nanmean(norm, 1)
     std = np.nanstd(norm, 1)
+    std[std==0] = 1
+
+    for g in range(ngroup):
+        aave = ave[g]
+        astd = std[g]
+        norm[g] = (norm[g] - aave) /astd
 
     # start = floor(n * cutmin)
     # stop = ceil(n * cutmax)
