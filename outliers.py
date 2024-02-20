@@ -79,13 +79,36 @@ if __name__ == '__main__':
 
     # make a trimmed list of genome names (part up to first underline)
     organism = {}
+    orgidx = []
     for p in range(len(og.proteome)):
         field = og.proteome[p].split('_')
         organism[field[0]] = p
+        orgidx.append(field[0])
 
     # normalize the count data so that each row is a standard normal deviate, using trimmed mean
     # and STD dev.
 
-    z = trimmed_stats(og, 0.5, ignore_zero=True)
+    cols = []
+    for t in target:
+        cols.append(organism[t])
+
+    z = trimmed_stats(og, 0.5)
+    selected = z[:, cols].mean(axis=1)
+    n = 0
+    top = 10
+    ranked = sorted(range(len(selected)), key=lambda g:selected[g])
+    print(f'\n{top} most reduced in {target}')
+    for g in ranked[:top]:
+        print(f'\nOrthogroup {g:6d}\t{selected[g]:.3f}')
+        for i in range(n_proteome):
+            print(f'\t{orgidx[i]}: {len(og.group[g][i])}\t{og.group[g][i]}')
+
+
+    print(f'\n{top} most expanded in {target}')
+    for g in ranked[-top:]:
+        print(f'\nOrthogroup {g:6d}\t{selected[g]:.3f}')
+        for i in range(n_proteome):
+            print(f'\t{orgidx[i]}: {len(og.group[g][i])}\t{og.group[g][i]}')
+
 
     exit(0)
