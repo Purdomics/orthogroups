@@ -15,12 +15,41 @@ group[i][j][k] are the individual matching sequences
 
 18 February 2024     gribskov
 ================================================================================================="""
+import argparse
+import datetime
 import sys
-# from math import floor, ceil
-from scipy.stats.mstats import trimmed_mean, trimmed_std
-# from scipy import stats
+
 import numpy as np
+from scipy.stats.mstats import trimmed_mean, trimmed_std
+
 from orthogroups import Orthogroup
+
+
+def process_command_line():
+    """---------------------------------------------------------------------------------------------
+
+    :return:
+    ---------------------------------------------------------------------------------------------"""
+    cl = argparse.ArgumentParser(
+        description='Find expanded and contracted orthogroups',
+        formatter_class=lambda prog: argparse.HelpFormatter(prog, width=120, max_help_position=40)
+        )
+    cl.add_argument('-g', '--orthogroup',
+                    help='Orthogroups.tsv fild',
+                    type=str,
+                    default='Orthogroups.tsv')
+
+    cl.add_argument('-n', '--ntop',
+                    help='number of top/bottom groups to report',
+                    type=int,
+                    default=20)
+
+    cl.add_argument('-t', '--target',
+                    help='comma delimited string with list of target organisms',
+                    type=str,
+                    default='')
+
+    return cl.parse_args()
 
 
 def trimmed_stats(og, proportion, ignore_zero=True):
@@ -68,14 +97,22 @@ def trimmed_stats(og, proportion, ignore_zero=True):
 # Main
 # ==================================================================================================
 if __name__ == '__main__':
-    target = ['Cryan3', 'Crymi1']
-    ogdata = 'data/Orthogroups.tsv'
-    og = Orthogroup(ogdata)
-    n_proteome = og.proteome_read()
-    print(f'{n_proteome} sequences file names read')
+    daytime = datetime.datetime.now()
+    runstart = daytime.strftime('%Y-%m-%d %H:%M:%S')
+    opt = process_command_line()
 
+    sys.stderr.write(f'\noutliers.py {runstart}\n')
+    sys.stderr.write(f'Top groups: {opt.ntop}\n')
+    sys.stderr.write(f'orthogroups: {opt.orthogroup}\n\n')
+
+    target = opt.target.split(',')
+    sys.stderr.write(f'targets: {opt.target}\n\n')
+
+    og = Orthogroup(opt.orthogroup)
+    n_proteome = og.proteome_read()
+    sys.stderr.write(f'{n_proteome} sequence file names read\n')
     n_seq = og.groups_read()
-    print(f'{n_seq} sequences read')
+    sys.stderr.write(f'{n_seq} orthogroups read\n\n')
 
     # make a trimmed list of genome names (part up to first underline)
     organism = {}
@@ -90,25 +127,27 @@ if __name__ == '__main__':
 
     cols = []
     for t in target:
-        cols.append(organism[t])
+        try:
+            cols.append(organism[t])
+        except KeyError:
+            sys.stderr.write(f'Unknown organism ({t})')
+            exit(2)
 
     z = trimmed_stats(og, 0.5)
     selected = z[:, cols].mean(axis=1)
     n = 0
     top = 10
-    ranked = sorted(range(len(selected)), key=lambda g:selected[g])
+    ranked = sorted(range(len(selected)), key=lambda g: selected[g])
     print(f'\n{top} most reduced in {target}')
     for g in ranked[:top]:
         print(f'\nOrthogroup {g:6d}\t{selected[g]:.3f}')
         for i in range(n_proteome):
             print(f'\t{orgidx[i]}: {len(og.group[g][i])}\t{og.group[g][i]}')
 
-
     print(f'\n{top} most expanded in {target}')
     for g in ranked[-top:]:
         print(f'\nOrthogroup {g:6d}\t{selected[g]:.3f}')
         for i in range(n_proteome):
             print(f'\t{orgidx[i]}: {len(og.group[g][i])}\t{og.group[g][i]}')
-
 
     exit(0)
