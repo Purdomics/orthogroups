@@ -23,7 +23,7 @@ class CompactJSONEncoder(json.JSONEncoder):
                 self.indentation_level += 1
                 output = [self.indent_str + self.encode(el) for el in o]
                 self.indentation_level -= 1
-                return "[" + ",\n".join(output) + "\n" + self.indent_str + "]"
+                return "[\n" + ",\n".join(output) + "\n" + self.indent_str + "]"
 
         elif isinstance(o, dict):
             self.indentation_level += 1
@@ -35,10 +35,18 @@ class CompactJSONEncoder(json.JSONEncoder):
             return json.dumps(o)
 
     def _is_single_line_list(self, o):
+        """-----------------------------------------------------------------------------------------
+        This controls what should be a single line
+
+        :param o: list      list to format
+        :return:
+        -----------------------------------------------------------------------------------------"""
+        n_items = 5
+        line_len = 120
         if isinstance(o, (list, tuple)):
             return not any(isinstance(el, (list, tuple, dict)) for el in o) \
-                and len(o) <= 3 \
-                and len(str(o)) - 2 <= 80
+                and len(o) <= n_items \
+                and len(str(o)) - 2 <= line_len
 
     @property
     def indent_str(self) -> str:
