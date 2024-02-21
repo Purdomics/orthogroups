@@ -87,7 +87,7 @@ class Orthogroup:
             group.append(row)
             s = 0
             for species in field[1:]:
-                seq = species.split(',')
+                seq = species.replace(', ', ',').split(',')
                 if seq[0] != '':
                     # species is present in this orthogroup
                     row[s] = seq
