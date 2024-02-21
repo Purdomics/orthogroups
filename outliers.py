@@ -35,7 +35,7 @@ def process_command_line():
         formatter_class=lambda prog: argparse.HelpFormatter(prog, width=120, max_help_position=40)
         )
     cl.add_argument('-g', '--orthogroup',
-                    help='Orthogroups.tsv fild',
+                    help='Orthogroups.tsv file',
                     type=str,
                     default='Orthogroups.tsv')
 
@@ -133,6 +133,12 @@ if __name__ == '__main__':
             sys.stderr.write(f'Unknown organism ({t})')
             exit(2)
 
+    # summary of source sequences for looking up fasta
+    print(f'Source Data:')
+    for p in range(len(og.proteome)):
+        print(f'{orgidx[p]}\t{og.proteome[p]}')
+
+    print(f'\nExpanded/contracted Groups:')
     z = trimmed_stats(og, 0.5)
     selected = z[:, cols].mean(axis=1)
     n = 0
