@@ -17,11 +17,13 @@ group[i][j][k] are the individual matching sequences
 ================================================================================================="""
 import argparse
 import datetime
+import json
 import sys
 
 import numpy as np
 from scipy.stats.mstats import trimmed_mean, trimmed_std
 
+from json_custom_encoder import CompactJSONEncoder
 from orthogroups import Orthogroup
 
 
@@ -46,6 +48,11 @@ def process_command_line():
 
     cl.add_argument('-t', '--target',
                     help='comma delimited string with list of target organisms',
+                    type=str,
+                    default='')
+
+    cl.add_argument('-j', '--json',
+                    help='JSON output file',
                     type=str,
                     default='')
 
@@ -93,6 +100,9 @@ def trimmed_stats(og, proportion, ignore_zero=True):
     return ((norm.T - ave) / std).T
 
 
+# def report()
+
+
 # ==================================================================================================
 # Main
 # ==================================================================================================
@@ -103,10 +113,14 @@ if __name__ == '__main__':
 
     sys.stderr.write(f'\noutliers.py {runstart}\n')
     sys.stderr.write(f'Top groups: {opt.ntop}\n')
-    sys.stderr.write(f'orthogroups: {opt.orthogroup}\n\n')
+    sys.stderr.write(f'Orthogroups: {opt.orthogroup}\n')
+    jsonfile = None
+    if opt.json:
+        sys.stderr.write(f'JSON Output: {opt.json}\n')
+        jsonfile = open(opt.json, 'w')
 
     target = opt.target.split(',')
-    sys.stderr.write(f'targets: {opt.target}\n\n')
+    sys.stderr.write(f'\nTargets: {opt.target}\n\n')
 
     og = Orthogroup(opt.orthogroup)
     n_proteome = og.proteome_read()
@@ -134,9 +148,11 @@ if __name__ == '__main__':
             exit(2)
 
     # summary of source sequences for looking up fasta
+    json_out = {'source_data': {}}
     print(f'Source Data:')
     for p in range(len(og.proteome)):
         print(f'{orgidx[p]}\t{og.proteome[p]}')
+        json_out['source_data'][orgidx[p]] = og.proteome[p]
 
     print(f'\nExpanded/contracted Groups:')
     z = trimmed_stats(og, 0.5)
@@ -144,16 +160,35 @@ if __name__ == '__main__':
     n = 0
     top = 10
     ranked = sorted(range(len(selected)), key=lambda g: selected[g])
+
     print(f'\n{top} most reduced in {target}')
+    reduced = []
     for g in ranked[:top]:
         print(f'\nOrthogroup {g:6d}\t{selected[g]:.3f}')
+        this_group = {'og_num': g, 'z': selected[g], 'Members': []}
+        reduced.append(this_group)
+        members = this_group['Members']
         for i in range(n_proteome):
             print(f'\t{orgidx[i]}: {len(og.group[g][i])}\t{og.group[g][i]}')
+            members.append([orgidx[i], len(og.group[g][i])] + og.group[g][i])
+        json_out['Reduced'] = reduced
 
     print(f'\n{top} most expanded in {target}')
+    expanded = []
     for g in ranked[-top:]:
+        this_group = {'og_num': g, 'z': selected[g], 'Members': []}
+        expanded.append(this_group)
+        members = this_group['Members']
         print(f'\nOrthogroup {g:6d}\t{selected[g]:.3f}')
         for i in range(n_proteome):
             print(f'\t{orgidx[i]}: {len(og.group[g][i])}\t{og.group[g][i]}')
+            members.append([orgidx[i], len(og.group[g][i])] + og.group[g][i])
+            if not og.group[g][i]:
+                members[-1].append('')
+
+    json_out['Expanded'] = expanded
+    if jsonfile:
+        jsonfile.write(f'{json.dumps(json_out, indent=2, cls=CompactJSONEncoder)}\n')
+        jsonfile.close()
 
     exit(0)
