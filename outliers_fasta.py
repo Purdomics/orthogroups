@@ -35,6 +35,11 @@ def process_command_line():
                     type=str,
                     default='all')
 
+    cl.add_argument('-p', '--prefix',
+                    help='prefix string for output file',
+                    type=str,
+                    default='outlier')
+
     return cl.parse_args()
 
 
@@ -90,6 +95,7 @@ if __name__ == '__main__':
     runstart = daytime.strftime('%Y-%m-%d %H:%M:%S')
     opt = process_command_line()
     sys.stderr.write(f'\noutliers.py {runstart}\n')
+    sys.stderr.write(f'Output file prefix: {opt.prefix}')
 
     # json file with top orthogroups
     try:
@@ -122,6 +128,12 @@ if __name__ == '__main__':
     nred, nseqred = make_sequence_list(sequences, top['Reduced'], bottom_n)
     sys.stderr.write(f'{nseqexp+nseqred} sequences will be read for {nexp+nred} groups\n')
 
-    # for each sequence file, open the file and
+    # set up output files for sequences
+    # names are opt.<prefix>_<e|r><og_num>.fa, e.g. cold_e568.fa
+    # files need to opened simultaneously because each sequence has entries in each orthogroup
+    files = {}
+    ngroup = 0
+    for og in top['Expanded']:
+        fname = f'opt.prefix + '_r' + og['og_num'] +
 
     exit(0)
