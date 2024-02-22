@@ -27,9 +27,9 @@ from json_custom_encoder import CompactJSONEncoder
 from orthogroups import Orthogroup
 
 
-def process_command_line():
+def process_command_line():ls
     """---------------------------------------------------------------------------------------------
-
+    TODO add defaults to output
     :return:
     ---------------------------------------------------------------------------------------------"""
     cl = argparse.ArgumentParser(
@@ -61,7 +61,7 @@ def process_command_line():
                     type=str,
                     default='')
 
-    cl.add_argument('--tsv',
+    cl.add_argument('-v', '--tsv',
                     help='file for normalized counts in TSV format',
                     type=str,
                     default='')
