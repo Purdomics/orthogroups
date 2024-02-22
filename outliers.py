@@ -27,7 +27,7 @@ from json_custom_encoder import CompactJSONEncoder
 from orthogroups import Orthogroup
 
 
-def process_command_line():ls
+def process_command_line():
     """---------------------------------------------------------------------------------------------
     TODO add defaults to output
     :return:
