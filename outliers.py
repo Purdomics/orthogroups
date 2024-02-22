@@ -46,6 +46,11 @@ def process_command_line():
                     type=int,
                     default=20)
 
+    cl.add_argument('-f', '--fraction',
+                    help='total fraction of observations to trim in mean/std.dev. calculation',
+                    type=int,
+                    default=0.5)
+
     cl.add_argument('-t', '--target',
                     help='comma delimited string with list of target organisms',
                     type=str,
@@ -53,6 +58,11 @@ def process_command_line():
 
     cl.add_argument('-j', '--json',
                     help='JSON output file',
+                    type=str,
+                    default='')
+
+    cl.add_argument('--tsv',
+                    help='file for normalized counts in TSV format',
                     type=str,
                     default='')
 
@@ -100,7 +110,39 @@ def trimmed_stats(og, proportion, ignore_zero=True):
     return ((norm.T - ave) / std).T
 
 
-# def report()
+def tsv_write(opt, col_labels, z):
+    """---------------------------------------------------------------------------------------------
+    if opt.tsv, write a tab delimited file with the normalized data
+
+    :param opt: namespace       command line options
+    :param col_labels: list     column labels (str)
+    :param z: np.array          normalized data
+
+    :return: int                number of line sritten
+    ---------------------------------------------------------------------------------------------"""
+    if not opt.tsv:
+        return 0
+
+    tsvfp = open(opt.tsv, 'w')
+
+    # column lables
+    tsvfp.write(f'Orthogroup')
+    for label in col_labels:
+        tsvfp.write(f'\t{label}')
+    tsvfp.write('\n')
+
+    # data matrix
+    nline = 0
+    for row in z:
+        tsvfp.write(f'OG{nline:07d}')
+        for col in range(1, len(row)):
+            tsvfp.write(f'\t{row[col]}')
+
+        tsvfp.write('\n')
+        nline += 1
+
+    tsvfp.close()
+    return nline
 
 
 # ==================================================================================================
@@ -112,12 +154,15 @@ if __name__ == '__main__':
     opt = process_command_line()
 
     sys.stderr.write(f'\noutliers.py {runstart}\n')
+    sys.stderr.write(f'Trim fraction: {opt.fraction}\n')
     sys.stderr.write(f'Top groups: {opt.ntop}\n')
     sys.stderr.write(f'Orthogroups: {opt.orthogroup}\n')
     jsonfile = None
     if opt.json:
         sys.stderr.write(f'JSON Output: {opt.json}\n')
         jsonfile = open(opt.json, 'w')
+    if opt.tsv:
+        sys.stderr.write(f'TSV output: {opt.tsv}\n')
 
     target = opt.target.split(',')
     sys.stderr.write(f'\nTargets: {opt.target}\n\n')
@@ -126,7 +171,7 @@ if __name__ == '__main__':
     n_proteome = og.proteome_read()
     sys.stderr.write(f'{n_proteome} sequence file names read\n')
     n_seq = og.groups_read()
-    sys.stderr.write(f'{n_seq} orthogroups read\n\n')
+    sys.stderr.write(f'{n_seq} orthogroup sequences read\n\n')
 
     # make a trimmed list of genome names (part up to first underline)
     organism = {}
@@ -155,15 +200,16 @@ if __name__ == '__main__':
         json_out['source_data'][orgidx[p]] = og.proteome[p]
 
     print(f'\nExpanded/contracted Groups:')
-    z = trimmed_stats(og, 0.5)
+    z = trimmed_stats(og, opt.fraction)
     selected = z[:, cols].mean(axis=1)
+    tsv_write(opt, orgidx, z)
+
     n = 0
-    top = 10
     ranked = sorted(range(len(selected)), key=lambda g: selected[g])
 
-    print(f'\n{top} most reduced in {target}')
+    print(f'\n{opt.ntop} most reduced in {target}')
     reduced = []
-    for g in ranked[:top]:
+    for g in ranked[:opt.ntop]:
         print(f'\nOrthogroup {g:6d}\t{selected[g]:.3f}')
         this_group = {'og_num': g, 'z': selected[g], 'Members': []}
         reduced.append(this_group)
@@ -173,9 +219,9 @@ if __name__ == '__main__':
             members.append([orgidx[i], len(og.group[g][i])] + og.group[g][i])
         json_out['Reduced'] = reduced
 
-    print(f'\n{top} most expanded in {target}')
+    print(f'\n{opt.ntop} most expanded in {target}')
     expanded = []
-    for g in ranked[-top:]:
+    for g in ranked[-opt.ntop:]:
         this_group = {'og_num': g, 'z': selected[g], 'Members': []}
         expanded.append(this_group)
         members = this_group['Members']
