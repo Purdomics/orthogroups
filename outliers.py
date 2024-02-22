@@ -132,6 +132,7 @@ def tsv_write(opt, col_labels, z):
     tsvfp.write('\n')
 
     # data matrix
+    # TODO may not be writing the last column
     nline = 0
     for row in z:
         tsvfp.write(f'OG{nline:07d}')
