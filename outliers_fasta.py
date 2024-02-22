@@ -8,11 +8,12 @@ Retrieve the fasta sequences for the expanded and contracted orthogroups
 import argparse
 import datetime
 import sys
+import json
 
-import numpy as np
-from scipy.stats.mstats import trimmed_mean, trimmed_std
-
-from orthogroups import Orthogroup
+# import numpy as np
+# from scipy.stats.mstats import trimmed_mean, trimmed_std
+#
+# from orthogroups import Orthogroup
 
 
 def process_command_line():
@@ -21,66 +22,64 @@ def process_command_line():
     :return:
     ---------------------------------------------------------------------------------------------"""
     cl = argparse.ArgumentParser(
-        description='Find expanded and contracted orthogroups',
+        description='Retrieve orthogroup outlier FastA sequences',
         formatter_class=lambda prog: argparse.HelpFormatter(prog, width=120, max_help_position=40)
         )
-    cl.add_argument('-g', '--orthogroup',
-                    help='Orthogroups.tsv fild',
+    cl.add_argument('-j', '--json',
+                    help='Output orthogroups from outlier.py',
                     type=str,
-                    default='Orthogroups.tsv')
+                    default='None supplied')
 
     cl.add_argument('-n', '--ntop',
                     help='number of top/bottom groups to report',
-                    type=int,
-                    default=20)
-
-    cl.add_argument('-t', '--target',
-                    help='comma delimited string with list of target organisms',
                     type=str,
-                    default='')
+                    default='all')
 
     return cl.parse_args()
 
 
-def trimmed_stats(og, proportion, ignore_zero=True):
+def make_sequence_list(seqdict, group, n_max):
     """---------------------------------------------------------------------------------------------
-    return the trimmed mean and standard deviation. proportion defines how much data is omitted on
-    each side (proportion/2). After sorting the first index used is the first >= proportion/2 and
-    the last is the one <= 1.0 - proportion/2
+    creates a list of the sequences needed from each sequence file
 
-    :param og: list             Othogroup object, rows are orthogroups
-    :param proportion:          proportion to trim proportion/2 trimmed on each side
-    :param ignore_zero: bool    NOT IMPLEMENTED. if True, zeroes are omitted otherwise they are
-                                treated as values
-    :return: float, float       Z normalized data
+    seqdict = { species: {
+                    'id':[seqid1, seqid2, ...],
+                    'og_num'[og1, og2, ...] } }
+
+    group = [{'og_num':int, 'z':float,
+              'Members': [
+                            [seqname1, seqname2 ... ],
+                            ...
+                        ] },
+                ... ]
+    where Members is a list over the organisms in the analysis
+
+    :param seqdict: dict            list of sequence ids and corresponding ogs for each proteome file
+    :param group: list of dict      dict holds the member sequences of each selected orthogroup
+    :param n_max: int               maximum number of groups to add to seqdict
+    :return: int, int               number of sequences, number of groups
     ---------------------------------------------------------------------------------------------"""
-    # use_zero = not ignore_zero
-    cut = proportion / 2
+    ngroups = 0
+    nseqs = 0
+    for og in group:
+        ngroups += 1
+        og_num = og['og_num']
+        for member in og['Members']:
+            if not member:
+                # skip blank groups
+                break
 
-    # nil = 0
-    # if ignore_zero:
-    #     nil = np.nan
-    data = og.group
-    norm = np.full([len(data), len(og.proteome)], np.nan)
+            species = member[0]
+            nseq = member[1]
+            for i in range(2, nseq + 2):
+                # print(f'{species}\t{og_num}\t{member[i]}')
+                seqdict[species]['id'].append(member[i])
+                seqdict[species]['og_num'].append(og_num)
+                nseqs += 1
+        if ngroups > n_max:
+            break
 
-    # make count vector from original data, and store in norm using zero or NaN depending
-    # on the state of ignore_zero
-    ngroup = len(data)
-    for g in range(ngroup):
-        nspecie = len(data[g])
-        norm[g] = [len(data[g][s]) for s in range(nspecie)]
-
-    # if ignore_zero:
-    #     norm[norm == 0] = np.nan
-
-    # mean and standard deviation, values are trimmed until index+1 >= n*cut
-    # for n=12 and cut = .125, two values are cut off
-
-    ave = trimmed_mean(norm, limits=(cut, cut), inclusive=(False, False), axis=1)
-    std = trimmed_std(norm, limits=(cut, cut), inclusive=(False, False), axis=1)
-    std[std == 0] = 1
-
-    return ((norm.T - ave) / std).T
+    return ngroups, nseqs
 
 
 # ==================================================================================================
@@ -90,54 +89,39 @@ if __name__ == '__main__':
     daytime = datetime.datetime.now()
     runstart = daytime.strftime('%Y-%m-%d %H:%M:%S')
     opt = process_command_line()
-
     sys.stderr.write(f'\noutliers.py {runstart}\n')
-    sys.stderr.write(f'Top groups: {opt.ntop}\n')
-    sys.stderr.write(f'orthogroups: {opt.orthogroup}\n\n')
 
-    target = opt.target.split(',')
-    sys.stderr.write(f'targets: {opt.target}\n\n')
+    # json file with top orthogroups
+    try:
+        fp_json = open(opt.json, 'r')
+    except OSError:
+        sys.stderr.write(f'outliers_fasta - unable to open JSON file ({opt.json})\n')
+        exit(1)
 
-    og = Orthogroup(opt.orthogroup)
-    n_proteome = og.proteome_read()
-    sys.stderr.write(f'{n_proteome} sequence file names read\n')
-    n_seq = og.groups_read()
-    sys.stderr.write(f'{n_seq} orthogroups read\n\n')
+    sys.stderr.write(f'Top orthogroup file: {opt.json}')
+    top = json.load(fp_json)
+    ntop = len(top['Expanded'])
+    nbottom = len(top['Reduced'])
+    sys.stderr.write(f'\tgroups:{ntop + nbottom}\n')
 
-    # make a trimmed list of genome names (part up to first underline)
-    organism = {}
-    orgidx = []
-    for p in range(len(og.proteome)):
-        field = og.proteome[p].split('_')
-        organism[field[0]] = p
-        orgidx.append(field[0])
+    if opt.ntop == 'all':
+        top_n = ntop
+        bottom_n = nbottom
+    else:
+        top_n = min(ntop, int(opt.ntop))
+        bottom_n = min(nbottom, int(opt.ntop))
 
-    # normalize the count data so that each row is a standard normal deviate, using trimmed mean
-    # and STD dev.
+    sys.stderr.write(f'Highest groups: {top_n}\n')
+    sys.stderr.write(f'Lowest groups: {bottom_n}\n\n')
 
-    cols = []
-    for t in target:
-        try:
-            cols.append(organism[t])
-        except KeyError:
-            sys.stderr.write(f'Unknown organism ({t})')
-            exit(2)
+    # for each sequence, make a list of all the sequences
+    # protein sequence file names are in top['source_data']
+    # sequences for each orthogroup are in top['Expanded'|'Reduced']['Members']
+    sequences = {species: {'id': [], 'og_num': []} for species in top['source_data']}
+    nexp, nseqexp = make_sequence_list(sequences, top['Expanded'], top_n)
+    nred, nseqred = make_sequence_list(sequences, top['Reduced'], bottom_n)
+    sys.stderr.write(f'{nseqexp+nseqred} sequences will be read for {nexp+nred} groups\n')
 
-    z = trimmed_stats(og, 0.5)
-    selected = z[:, cols].mean(axis=1)
-    n = 0
-    top = 10
-    ranked = sorted(range(len(selected)), key=lambda g: selected[g])
-    print(f'\n{top} most reduced in {target}')
-    for g in ranked[:top]:
-        print(f'\nOrthogroup {g:6d}\t{selected[g]:.3f}')
-        for i in range(n_proteome):
-            print(f'\t{orgidx[i]}: {len(og.group[g][i])}\t{og.group[g][i]}')
-
-    print(f'\n{top} most expanded in {target}')
-    for g in ranked[-top:]:
-        print(f'\nOrthogroup {g:6d}\t{selected[g]:.3f}')
-        for i in range(n_proteome):
-            print(f'\t{orgidx[i]}: {len(og.group[g][i])}\t{og.group[g][i]}')
+    # for each sequence file, open the file and
 
     exit(0)
