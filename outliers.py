@@ -136,7 +136,7 @@ def tsv_write(opt, col_labels, z):
     nline = 0
     for row in z:
         tsvfp.write(f'OG{nline:07d}')
-        for col in range(1, len(row)):
+        for col in range(len(row)):
             tsvfp.write(f'\t{row[col]}')
 
         tsvfp.write('\n')
