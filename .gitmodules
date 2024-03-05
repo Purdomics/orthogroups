@@ -1,0 +1,3 @@
+[submodule "sequence"]
+	path = sequence
+	url = https://github.com/Purdomics/sequence.git
