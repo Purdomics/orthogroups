@@ -9,6 +9,8 @@ import argparse
 import datetime
 import sys
 
+from sequence.fasta import Fasta
+
 
 def process_command_line():
     """---------------------------------------------------------------------------------------------
@@ -18,7 +20,7 @@ def process_command_line():
     cl = argparse.ArgumentParser(
         description='Run interpro on selected orthogroups',
         formatter_class=lambda prog: argparse.HelpFormatter(prog, width=120, max_help_position=40)
-    )
+        )
     cl.add_argument('-g', '--orthogroup',
                     help='Orthogroups file',
                     type=str,
@@ -47,11 +49,7 @@ def read_list(opt, ogs):
     :param ogs: dict            keys are orthogroup filepaths from input list
     :return: int                number of orthogroups read
     ---------------------------------------------------------------------------------------------"""
-    try:
-        oglist = open(opt.orthogroup, 'r')
-    except OSError:
-        sys.stderr.write(f'\nUnable to open orthogroup list ({opt.orthogroup}\n\n')
-        exit(1)
+    oglist = opensafe(opt.orthogroup, 'r')
 
     og_n = 0
     for line in oglist:
@@ -62,7 +60,27 @@ def read_list(opt, ogs):
         ogs[line.rstrip()] = []
         og_n += 1
 
+    oglist.close()
+
     return og_n
+
+
+def opensafe(filename, mode):
+    """---------------------------------------------------------------------------------------------
+    open a file with error check. Failure results in exit(1)
+
+    :param filename: string     path to file
+    :param mode: string         open mode, typically 'r' or 'w'
+    :return: filehandle         open filehandle
+    ---------------------------------------------------------------------------------------------"""
+    fh = None
+    try:
+        fh = open(filename, mode)
+    except OSError:
+        sys.stderr.write(f'\nUnable to open orthogroup list ({opt.orthogroup}\n\n')
+        exit(1)
+
+    return fh
 
 
 # ==================================================================================================
@@ -74,8 +92,8 @@ if __name__ == '__main__':
     opt = process_command_line()
 
     sys.stderr.write(f'\nog_interpro.py {runstart}\n')
-    sys.stderr.write(f'\tOG list: {opt.orthogroup}')
-    sys.stderr.write(f'\tOutput directory: {opt.out}')
+    sys.stderr.write(f'\tOG list: {opt.orthogroup}\n')
+    sys.stderr.write(f'\tOutput directory: {opt.out}\n')
 
     # Read list of selected orthogroups, initially each orthogroup points to an empty list,
     # when we read the sequences these will be filled with SequenceInfo objects
@@ -84,6 +102,10 @@ if __name__ == '__main__':
     sys.stderr.write(f'\n{og_n} orthogroups read from {opt.orthogroup}\n')
 
     # open each orthogroup file and read the sequences
+    for ogfilename in ogs:
+        fasta = Fasta(filename=ogfilename, mode='r')
+        while fasta.next():
+            print(fasta.format(linelen=60))
 
     # send sequences to interproscan in groups of thirty, waiting for batches to complete
 
