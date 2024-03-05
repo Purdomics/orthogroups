@@ -6,10 +6,13 @@ send selected orthogroups to interpro to find domains and GO terms
 04 March 2024     gribskov
 ================================================================================================="""
 import argparse
+import time
 import datetime
 import sys
+from os.path import basename
 
 from sequence.fasta import Fasta
+from interpro.interpro import Interpro
 
 
 def process_command_line():
@@ -99,15 +102,51 @@ if __name__ == '__main__':
     # when we read the sequences these will be filled with SequenceInfo objects
     ogs = {}
     og_n = read_list(opt, ogs)
-    sys.stderr.write(f'\n{og_n} orthogroups read from {opt.orthogroup}\n')
+    s = 's'
+    if og_n == 1:
+        s = ''
+    sys.stderr.write(f'\n{og_n} orthogroup{s} read from {opt.orthogroup}\n')
+
+    # setup the interproscan searches, all the searches can be done through a single object
+    ips = Interpro()
+    ips.email = 'mgribsko@purdue.edu'
+    ips.application_select(['PfamA', 'SMART', 'PrositePatterns', 'CDD', 'NCBIfam', 'PIRSF','SuperFamily'])
+    ips.output_select('json')
+    ips.parameter_select({'goterms': True, 'pathways': False})
 
     # open each orthogroup file and read the sequences
     for ogfilename in ogs:
         fasta = Fasta(filename=ogfilename, mode='r')
-        while fasta.next():
-            print(fasta.format(linelen=60))
+        og = basename(ogfilename)
+        og = og[:og.rindex('.')]
 
-    # send sequences to interproscan in groups of thirty, waiting for batches to complete
+        while fasta.next():
+            fasta.seq = fasta.seq.rstrip('*')
+            print(fasta.format(linelen=60))
+            print()
+
+            # send sequences to interproscan in groups of thirty, waiting for batches to complete
+
+            ips.title = fasta.id
+            ips.sequence = fasta.format()
+            print(f'submitting {og}:{fasta.id}')
+            if not ips.submit(show_query=False):
+                exit(1)
+
+            batch_size = 30
+            poll_time = 30
+            poll_count = 0
+            poll_max = 50
+            while ips.status() != 'finished':
+                time.sleep(poll_time)
+                poll_count += 1
+                print(f'\t ... polling({poll_count}) = {ips.jobstatus}')
+                if poll_count > poll_max:
+                    break
+
+            print('collecting result')
+            ips.result()
+            print(ips.content)
 
     # parse results
 
