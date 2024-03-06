@@ -98,27 +98,39 @@ def interpro_setup(fasta):
     ips.output_select('json')
     ips.parameter_select({'goterms': True, 'pathways': False})
     ips.title = fasta.id
+    fasta.seq = fasta.seq.rstrip('*')  # interproscan doesn't like * at the end
     ips.sequence = fasta.format()
 
     return ips
 
 
-def interpro_submit(ip_submitted, submit_max, fasta):
+def interpro_submit(ip_submitted, ip_failed, submit_max, fasta):
     """---------------------------------------------------------------------------------------------
-    submit jobs to interprot service, up to submit_max jobs can be queued
+    submit jobs to interproscan service, up to submit_max jobs can be queued
 
-    :param ip_submitted: list      list of submitted Interpro objects
+    :param ip_submitted: list       list of submitted Interpro objects
+    :param ip_failed: list          list of failed Interpro objects
     :param submit_max: int          maximum number of jobs to submit in a batch
     :param fasta: Fasta             sequence for submission
     :return:
     ---------------------------------------------------------------------------------------------"""
-    if len(ip_submitted) > submit_max:
-        return
+    if len(ip_submitted) < submit_max:
+        ips = interpro_setup(fasta)
+        print(f'submitting {og}:{fasta.id}')
+
+        if not ips.submit(show_query=False):
+            ip_failed.append(ips)
+        else:
+            ips_submitted.append(ips)
 
     return
 
-def interpro_poll(ip_submitted, ip_finished, poll_time, poll_last, maxtries):
+
+def interpro_poll(ip_submitted, ip_finished, poll_time, maxtries):
     """---------------------------------------------------------------------------------------------
+    EBI requests that no further jobs be submitted until all have been finished. Keep polling until
+    all the jobs in ip_submitted have been completed and moved to ip_finished. Note that you only
+    have to poll until you find the first job that is still running.
 
     :param ip_submitted: list       list of submitted Interpro objects
     :param ip_finished: list        completed Interpro objects
@@ -128,11 +140,28 @@ def interpro_poll(ip_submitted, ip_finished, poll_time, poll_last, maxtries):
     :return: int                    time of last poll
     ---------------------------------------------------------------------------------------------"""
     if not ip_submitted:
+        # no jobs in submitted queue
         return
 
-    time_current = time.time()
-    if poll_last - time_current < poll_time:
-        return
+    tries = 0
+    i = 0
+    while ip_submitted:
+        ips = ip_submitted[i]
+        tries += 1
+
+        if ips.status() == 'finished':
+            # remove job from ip_submitted and add to ip_finished
+            ip_finished.append(ips)
+            ip_submitted.remove(ips)
+            i += 1
+            continue
+
+        if tries > maxtries:
+            ip_finished.append(ips)
+            ip_submitted.remove(ips)
+
+        i = 0
+        time.sleep(poll_time)
 
     return
 
@@ -221,7 +250,8 @@ if __name__ == '__main__':
 
     ips_submitted = []
     ips_finished = []
-    batch_limit = 29
+    ips_failed = []
+    batch_limit = 3
     poll_time = 30
     poll_count = 0
     poll_max = 50
@@ -235,32 +265,16 @@ if __name__ == '__main__':
         # send sequences to interproscan in groups of batch_size, waiting for batches to complete
         # use one Interpro object for each sequence
 
+        interpro_submit(ips_submitted, ips_failed, batch_limit, sequence)
         if len(ips_submitted) < batch_limit:
-            ips = interpro_setup(fasta.id, fasta.format())
-            print(f'submitting {og}:{fasta.id}')
-            if not ips.submit(show_query=False):
-                exit(1)
+            continue
 
-            ips_submitted.append(ips)
+        interpro_poll(ips_submitted, ips_finished, poll_time)
 
-        if ips_submitted:
-            # poll if there are any sequences in the queue, and poll_time has passed since the
-            # last poll
-            poll_last = interpro_poll(ips_submitted, ips_finished, poll_time, poll_last)
-
-        if ips_finished:
-            # parse finished jobs and extract desired information
-            print('collecting result')
-            ips.result()
-            print(ips.content)
-
-
-    #         while ips.status() != 'finished':
-    #             time.sleep(poll_time)
-    #             poll_count += 1
-    #             print(f'\t ... polling({poll_count}) = {ips.jobstatus}')
-    #             if poll_count > poll_max:
-    #                 break
-
+        # if ips_finished:
+        #     # parse finished jobs and extract desired information
+        #     print('collecting result')
+        #     ips.result()
+        #     print(ips.content)
 
     exit(0)
