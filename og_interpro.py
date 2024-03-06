@@ -92,6 +92,7 @@ def interpro_setup(fasta):
     :param fasta: Fasta         query sequence object
     :return: Interpro           Interpro search object
     ---------------------------------------------------------------------------------------------"""
+    # TODO move to manager or drop?
     ips = Interpro()
     ips.email = 'mgribsko@purdue.edu'
     ips.application_select(['PfamA', 'SMART', 'PrositePatterns', 'CDD', 'NCBIfam', 'PIRSF', 'SuperFamily'])
@@ -102,68 +103,6 @@ def interpro_setup(fasta):
     ips.sequence = fasta.format()
 
     return ips
-
-
-def interpro_submit(ip_submitted, ip_failed, submit_max, fasta):
-    """---------------------------------------------------------------------------------------------
-    submit jobs to interproscan service, up to submit_max jobs can be queued
-
-    :param ip_submitted: list       list of submitted Interpro objects
-    :param ip_failed: list          list of failed Interpro objects
-    :param submit_max: int          maximum number of jobs to submit in a batch
-    :param fasta: Fasta             sequence for submission
-    :return:
-    ---------------------------------------------------------------------------------------------"""
-    if len(ip_submitted) < submit_max:
-        ips = interpro_setup(fasta)
-        print(f'submitting {og}:{fasta.id}')
-
-        if not ips.submit(show_query=False):
-            ip_failed.append(ips)
-        else:
-            ips_submitted.append(ips)
-
-    return
-
-
-def interpro_poll(ip_submitted, ip_finished, poll_time, maxtries):
-    """---------------------------------------------------------------------------------------------
-    EBI requests that no further jobs be submitted until all have been finished. Keep polling until
-    all the jobs in ip_submitted have been completed and moved to ip_finished. Note that you only
-    have to poll until you find the first job that is still running.
-
-    :param ip_submitted: list       list of submitted Interpro objects
-    :param ip_finished: list        completed Interpro objects
-    :param poll_time: int           time in seconds between polls
-    :param poll_last: int           time of last poll
-    :param maxtries: int            maximum number of times to poll before giving up
-    :return: int                    time of last poll
-    ---------------------------------------------------------------------------------------------"""
-    if not ip_submitted:
-        # no jobs in submitted queue
-        return
-
-    tries = 0
-    i = 0
-    while ip_submitted:
-        ips = ip_submitted[i]
-        tries += 1
-
-        if ips.status() == 'finished':
-            # remove job from ip_submitted and add to ip_finished
-            ip_finished.append(ips)
-            ip_submitted.remove(ips)
-            i += 1
-            continue
-
-        if tries > maxtries:
-            ip_finished.append(ips)
-            ip_submitted.remove(ips)
-
-        i = 0
-        time.sleep(poll_time)
-
-    return
 
 
 def next_og_sequence(ogs, fasta):
@@ -225,6 +164,84 @@ def next_og_sequence(ogs, fasta):
     return None
 
 
+class InterproscanManager:
+    """=============================================================================================
+    handle the sumbmission, polling, retrieval, and processing of searches
+    ============================================================================================="""
+
+    def __init__(self, batch_limit=30, poll_time=30, poll_max=50):
+        """-----------------------------------------------------------------------------------------
+        Attributes
+            submitted = []      list of submitted Interpro objects
+            finished = []       list of completed Interpro objects
+            failed = []         list of failed Interpro objects
+            batch_limit = 3     maximun number of jobs to submit in a batch
+            poll_time = 30      sleep time after polling
+            poll_max = 50       maximum times to poll before giving up (job is failed)
+        -----------------------------------------------------------------------------------------"""
+        self.submitted = []
+        self.finished = []
+        self.failed = []
+        self.batch_limit = batch_limit
+        self.poll_time = poll_time
+        self.poll_max = poll_max
+
+    def submit(self, fasta):
+        """---------------------------------------------------------------------------------------------
+        submit jobs to interproscan service, up to submit_max jobs can be queued
+
+        :param fasta: Fasta             sequence for submission
+        :return:
+        ---------------------------------------------------------------------------------------------"""
+        ip_submitted = self.submitted
+        ip_failed = self.failed
+        if len(ip_submitted) < self.batch_limit:
+            ips = interpro_setup(fasta)
+            print(f'submitting {og}:{fasta.id}')
+
+            if not ips.submit(show_query=False):
+                ip_failed.append(ips)
+            else:
+                ip_submitted.append(ips)
+
+        return
+
+    def poll(self):
+        """-----------------------------------------------------------------------------------------
+        EBI requests that no further jobs be submitted until all have been finished. Keep polling
+        until all the jobs in ip_submitted have been completed and moved to ip_finished. Note that
+        you only have to poll until you find the first job that is still running.
+        -----------------------------------------------------------------------------------------"""
+        ip_submitted = self.submitted
+        ip_finished = self.finished
+
+        if not ip_submitted:
+            # no jobs in submitted queue
+            return
+
+        tries = 0
+        i = 0
+        while ip_submitted:
+            ips = ip_submitted[i]
+            tries += 1
+
+            if ips.status() == 'finished':
+                # remove job from ip_submitted and add to ip_finished
+                ip_finished.append(ips)
+                ip_submitted.remove(ips)
+                i += 1
+                continue
+
+            if tries > self.maxtries:
+                ip_finished.append(ips)
+                ip_submitted.remove(ips)
+
+            i = 0
+            time.sleep(self.poll_time)
+
+        return
+
+
 # ==================================================================================================
 # Main
 # ==================================================================================================
@@ -248,13 +265,7 @@ if __name__ == '__main__':
 
     # setup the interproscan searches, all the searches can be done through a single object
 
-    ips_submitted = []
-    ips_finished = []
-    ips_failed = []
-    batch_limit = 3
-    poll_time = 30
-    poll_count = 0
-    poll_max = 50
+    ips_manager = InterproscanManager(batch_limit=3)
 
     done = False
     fasta = Fasta()
@@ -265,11 +276,10 @@ if __name__ == '__main__':
         # send sequences to interproscan in groups of batch_size, waiting for batches to complete
         # use one Interpro object for each sequence
 
-        interpro_submit(ips_submitted, ips_failed, batch_limit, sequence)
-        if len(ips_submitted) < batch_limit:
-            continue
+        if len(ips_manager.submitted) < ips_manager.batch_limit:
+            ips_manager.submit(sequence)
 
-        interpro_poll(ips_submitted, ips_finished, poll_time)
+        ips_manager.interpro_poll()
 
         # if ips_finished:
         #     # parse finished jobs and extract desired information
