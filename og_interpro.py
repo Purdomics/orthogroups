@@ -76,7 +76,6 @@ def opensafe(filename, mode):
     :param mode: string         open mode, typically 'r' or 'w'
     :return: filehandle         open filehandle
     ---------------------------------------------------------------------------------------------"""
-    fh = None
     try:
         fh = open(filename, mode)
     except OSError:
@@ -86,11 +85,10 @@ def opensafe(filename, mode):
     return fh
 
 
-def interpro_setup(title, fasta):
+def interpro_setup(fasta):
     """---------------------------------------------------------------------------------------------
     creates a new Interpro object and loads the parameters for one search.
 
-    :param title: string        job title for interproscan
     :param fasta: Fasta         query sequence object
     :return: Interpro           Interpro search object
     ---------------------------------------------------------------------------------------------"""
@@ -107,7 +105,7 @@ def interpro_setup(title, fasta):
 
 def interpro_submit(ips, batch_max, submitted):
     """---------------------------------------------------------------------------------------------
-    If there is
+    TODO finish
     :param ips:
     :param batch_max:
     :param submitted:
@@ -118,39 +116,61 @@ def interpro_submit(ips, batch_max, submitted):
 
 def next_og_sequence(ogs, fasta):
     """---------------------------------------------------------------------------------------------
-    return a fasta object with the next query sequen e. If all orthogroups have been processed,
-    return None
+    Generator for the main loop, iterates over all OGs and all sequences in each OG.
+    Yields a fasta object with the next query sequence, and its OG.
+    If all orthogroups have
+    been processed, returns None.
 
     :param ogs: list        strings with OG sequence file names
     :param fasta: Fasta     Fasta object with query sequences from current OG
-    :return: Fasta          next query sequence, or None if all have been processed
+    :return: Fasta, og      next query sequence, or None if all have been processed
+                            og is a string with the name of the current Orthogroup
+                            or None when finished
     ---------------------------------------------------------------------------------------------"""
+    og = ''
     query = None
-    if fasta.fh:
-        # already have an open file, try to read a sequence
-        # query = fasta.next()
-        if query:
-            return query
+    fasta_iter = None
 
-    # fall through to hear if filehandle isn't open, or sequence can't be read (end of current file)
+    while True:
 
-    # try the next orthogroup in ogs
-    if not len(ogs):
-        return None
+        # if an iterator is set try to get a sequence
+        if fasta_iter:
+            # print(f'iter exists {fasta_iter}')
+            try:
+                # success
+                query = next(fasta_iter)
+            except StopIteration:
+                # failed to get a sequence
+                # keeps StopIteration from crashing program
+                query = None
+                fasta_iter = None
 
-    ogfilename = ogs.pop()
-    if not ogfilename:
-        # if all OGs are done, return None
-        return None
+            if query:
+                yield fasta, og
 
-    # if an OG was found open and read a sequence
-    fasta = Fasta(filename=ogfilename, mode='r')
-    og = basename(ogfilename)
-    og = og[:og.rindex('.')]
-    # next(fasta)
+        # no query could be obtained from current iterator, the current file is finished, look for the
+        # next one in ogs
 
-    # return fasta.next()
-    return fasta
+        if ogs:
+            # OG list has more files
+            ogfilename = ogs.pop()
+            # print(f'new og {ogfilename}')
+            fasta = Fasta(filename=ogfilename, mode='r')
+            og = basename(ogfilename)
+            og = og[:og.rindex('.')]
+            fasta_iter = iter(fasta)
+            query = next(fasta_iter)
+            yield fasta, og
+            # print(f'iter exists {fasta_iter}')
+
+        # no more sequences in fasta file, and no more OGs to process - we are done, break out of
+        # forever loop
+        if not query:
+            break
+
+    # end of forever loop
+
+    return None
 
 
 # ==================================================================================================
@@ -181,9 +201,9 @@ if __name__ == '__main__':
 
     done = False
     fasta = Fasta()
-    while not done:
-        query = next_og_sequence(ogs, fasta)
-        print(query)
+    for sequence, og in next_og_sequence(ogs, fasta):
+        s = sequence.format()
+        print(og, s)
 
     # # open each orthogroup file and read the sequences
     # for ogfilename in ogs:
