@@ -103,14 +103,37 @@ def interpro_setup(fasta):
     return ips
 
 
-def interpro_submit(ips, batch_max, submitted):
+def interpro_submit(ip_submitted, submit_max, fasta):
     """---------------------------------------------------------------------------------------------
-    TODO finish
-    :param ips:
-    :param batch_max:
-    :param submitted:
+    submit jobs to interprot service, up to submit_max jobs can be queued
+
+    :param ip_submitted: list      list of submitted Interpro objects
+    :param submit_max: int          maximum number of jobs to submit in a batch
+    :param fasta: Fasta             sequence for submission
     :return:
     ---------------------------------------------------------------------------------------------"""
+    if len(ip_submitted) > submit_max:
+        return
+
+    return
+
+def interpro_poll(ip_submitted, ip_finished, poll_time, poll_last, maxtries):
+    """---------------------------------------------------------------------------------------------
+
+    :param ip_submitted: list       list of submitted Interpro objects
+    :param ip_finished: list        completed Interpro objects
+    :param poll_time: int           time in seconds between polls
+    :param poll_last: int           time of last poll
+    :param maxtries: int            maximum number of times to poll before giving up
+    :return: int                    time of last poll
+    ---------------------------------------------------------------------------------------------"""
+    if not ip_submitted:
+        return
+
+    time_current = time.time()
+    if poll_last - time_current < poll_time:
+        return
+
     return
 
 
@@ -198,6 +221,10 @@ if __name__ == '__main__':
 
     ips_submitted = []
     ips_finished = []
+    batch_limit = 29
+    poll_time = 30
+    poll_count = 0
+    poll_max = 50
 
     done = False
     fasta = Fasta()
@@ -205,38 +232,35 @@ if __name__ == '__main__':
         s = sequence.format()
         print(og, s)
 
-    # # open each orthogroup file and read the sequences
-    # for ogfilename in ogs:
-    #     fasta = Fasta(filename=ogfilename, mode='r')
-    #     og = basename(ogfilename)
-    #     og = og[:og.rindex('.')]
-    #
-    #     while fasta.next():
-    #         fasta.seq = fasta.seq.rstrip('*')
-    #         print(fasta.format(linelen=60))
-    #         print()
-    #
-    #         # send sequences to interproscan in groups of thirty, waiting for batches to complete
-    #         ips = interpro_setup(fasta.id, fasta.format())
-    #         print(f'submitting {og}:{fasta.id}')
-    #         if not ips.submit(show_query=False):
-    #             exit(1)
-    #
-    #         batch_size = 30
-    #         poll_time = 30
-    #         poll_count = 0
-    #         poll_max = 50
+        # send sequences to interproscan in groups of batch_size, waiting for batches to complete
+        # use one Interpro object for each sequence
+
+        if len(ips_submitted) < batch_limit:
+            ips = interpro_setup(fasta.id, fasta.format())
+            print(f'submitting {og}:{fasta.id}')
+            if not ips.submit(show_query=False):
+                exit(1)
+
+            ips_submitted.append(ips)
+
+        if ips_submitted:
+            # poll if there are any sequences in the queue, and poll_time has passed since the
+            # last poll
+            poll_last = interpro_poll(ips_submitted, ips_finished, poll_time, poll_last)
+
+        if ips_finished:
+            # parse finished jobs and extract desired information
+            print('collecting result')
+            ips.result()
+            print(ips.content)
+
+
     #         while ips.status() != 'finished':
     #             time.sleep(poll_time)
     #             poll_count += 1
     #             print(f'\t ... polling({poll_count}) = {ips.jobstatus}')
     #             if poll_count > poll_max:
     #                 break
-    #
-    #         print('collecting result')
-    #         ips.result()
-    #         print(ips.content)
 
-    # parse results
 
     exit(0)
