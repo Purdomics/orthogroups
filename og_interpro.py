@@ -214,6 +214,7 @@ class InterproscanManager:
         -----------------------------------------------------------------------------------------"""
         ip_submitted = self.submitted
         ip_finished = self.finished
+        ip_failed = self.failed
 
         if not ip_submitted:
             # no jobs in submitted queue
@@ -222,21 +223,21 @@ class InterproscanManager:
         tries = 0
         i = 0
         while ip_submitted:
-            ips = ip_submitted[i]
+            ips = ip_submitted.pop()
             tries += 1
 
             if ips.status() == 'finished':
                 # remove job from ip_submitted and add to ip_finished
                 ip_finished.append(ips)
-                ip_submitted.remove(ips)
-                i += 1
                 continue
 
-            if tries > self.maxtries:
-                ip_finished.append(ips)
-                ip_submitted.remove(ips)
+            # if we reach here at least on job is not finished, push ips back on the stack
+            ip_submitted.append(ips)
 
-            i = 0
+            if tries > self.poll_max:
+                # polled too many times
+                ip_failed.append(ips)
+
             time.sleep(self.poll_time)
 
         return
@@ -265,7 +266,7 @@ if __name__ == '__main__':
 
     # setup the interproscan searches, all the searches can be done through a single object
 
-    ips_manager = InterproscanManager(batch_limit=3)
+    ips_manager = InterproscanManager(batch_limit=2)
 
     done = False
     fasta = Fasta()
@@ -278,8 +279,8 @@ if __name__ == '__main__':
 
         if len(ips_manager.submitted) < ips_manager.batch_limit:
             ips_manager.submit(sequence)
-
-        ips_manager.interpro_poll()
+        else:
+            ips_manager.poll()
 
         # if ips_finished:
         #     # parse finished jobs and extract desired information
