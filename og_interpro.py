@@ -130,7 +130,7 @@ def next_og_sequence(ogs, fasta):
 
         # if an iterator is set try to get a sequence
         if fasta_iter:
-            print(f'iter exists {fasta_iter}')
+            # print(f'iter exists {fasta_iter}')
             try:
                 # success
                 query = next(fasta_iter)
@@ -141,7 +141,7 @@ def next_og_sequence(ogs, fasta):
                 fasta_iter = None
 
             if query:
-                print(f'query found ({query})')
+                # print(f'query found ({query})')
                 yield fasta, og
                 continue
 
@@ -151,14 +151,14 @@ def next_og_sequence(ogs, fasta):
         if ogs:
             # OG list has more files
             ogfilename = ogs.pop()
-            print(f'new og {ogfilename}')
+            # print(f'new og {ogfilename}')
             fasta = Fasta(filename=ogfilename, mode='r')
             og = basename(ogfilename)
             og = og[:og.rindex('.')]
             fasta_iter = iter(fasta)
             query = next(fasta_iter)
             yield fasta, og
-            print(f'iter exists {fasta_iter}')
+            # print(f'iter exists {fasta_iter}')
 
         # no more sequences in fasta file, and no more OGs to process - we are done, break out of
         # forever loop
@@ -198,7 +198,7 @@ class InterproscanManager:
         if not exists(pkl):
             # make sure output directory exists
             mkdir(pkl)
-
+        self.log_fh = InterproscanManager.getlog('og_interpro.log')
 
     def submit(self, fasta, og):
         """-----------------------------------------------------------------------------------------
@@ -213,12 +213,14 @@ class InterproscanManager:
         if len(ip_submitted) < self.batch_limit:
             ips = interpro_setup(fasta, og)
             print(f'submitting {og}:{fasta.id}\n')
-
+            self.log('SUBMIT', ips.title)
             self.n += 1
             if not ips.submit(show_query=False):
                 ip_failed.append(ips)
                 sys.stderr.write(f'{ips.title} failed\n')
+                self.log('FAIL', ips.title)
             else:
+                print('appending to submit')
                 ip_submitted.append(ips)
 
         return
@@ -235,11 +237,13 @@ class InterproscanManager:
 
         if not ip_submitted:
             # no jobs in submitted queue
+            sys.stderr.write('No submitted jobs\n')
             return
 
         tries = 0
         while ip_submitted:
             ips = ip_submitted.pop()
+            self.log('POLL', ips.title)
             tries += 1
 
             if ips.status() == 'finished':
@@ -253,6 +257,7 @@ class InterproscanManager:
             if tries > self.poll_max:
                 # polled too many times
                 ip_failed.append(ips)
+                self.log('FAIL-MAX', ips.title)
 
             time.sleep(self.poll_time)
 
@@ -265,17 +270,35 @@ class InterproscanManager:
         -----------------------------------------------------------------------------------------"""
         finished = self.finished
         if not finished:
+            sys.stderr.write('no finished jobs\n')
             return
 
         # parse finished jobs and extract desired information
         while finished:
             thisjob = finished.pop()
+            self.log('RETRIEVE', thisjob.title)
             thisjob.result()
             self.save.append(thisjob)
             self.save_as_pickle(thisjob, self.pkl)
             # print(thisjob.content)
 
         return len(self.save)
+
+    def log(self, message, jobtitle):
+        """-----------------------------------------------------------------------------------------
+        Write a message to the log file (self.log_fh). Format is
+            Time/date\tmessage\tjob for example
+            2024-03-11 10:24:54    SUBMITTED   OG0000066:ji|Acastr1|120024|AST1_006320-RA
+
+        :param message: string      message content
+        :param jobtitle: string     Interpro.title - job title
+        :return: None
+        -----------------------------------------------------------------------------------------"""
+        timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        self.log_fh.write(f'{timestamp}\t{message:>8s}\t{jobtitle}\n')
+        self.log_fh.flush()
+
+        return None
 
     @staticmethod
     def save_as_pickle(ips, pickledir='./'):
@@ -293,6 +316,23 @@ class InterproscanManager:
             status = pickle.dump(ips, picklefile, pickle.HIGHEST_PROTOCOL)
 
         return True
+
+    @staticmethod
+    def getlog(logfname):
+        """-----------------------------------------------------------------------------------------
+        try to open a new logfile. if file already exists add a header, if does not exist open in
+        append mode. Exit with status==2 if file can't be opened
+
+        :param logfname: string      path to logfile
+        :return: filehandle          file open for append
+        -----------------------------------------------------------------------------------------"""
+        try:
+            logfile = open(logfname, 'a')
+        except IOError:
+            sys.stderr.write(f'InterproscanManager:getlog - Error opening log file ({logfname}\n\n')
+            exit(2)
+
+        return logfile
 
 
 # ==================================================================================================
@@ -319,12 +359,18 @@ if __name__ == '__main__':
     # set up the interproscan searches, all the searches can be done through a single object
 
     ips_manager = InterproscanManager(batch_limit=5, pkl=opt.out)
+    ips_manager.log('\nBEGIN', f'Query={opt.orthogroup}')
 
     done = False
     fasta = Fasta()
     for sequence, og in next_og_sequence(ogs, fasta):
-        s = sequence.format()
-        print(og, s)
+        print(f'sub:{len(ips_manager.submitted):}')
+        print(f'finished:{len(ips_manager.finished):}')
+        print(f'save:{len(ips_manager.save):}')
+        print(f'fail:{len(ips_manager.failed):}')
+        # s = sequence.format()
+        # print(og, s)
+        print(f'{og} submitted')
 
         # send sequences to interproscan in groups of batch_size, waiting for batches to complete
         # use one Interpro object for each sequence
@@ -336,5 +382,9 @@ if __name__ == '__main__':
 
         ips_manager.getresult()
 
+    # get the last jobs
+    if len(ips_manager.submitted):
+        ips_manager.poll()
+        ips_manager.getresult()
 
     exit(0)

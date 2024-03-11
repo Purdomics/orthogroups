@@ -228,7 +228,11 @@ class Interpro(JobManagerAPI):
                 param[para] = self.parameters[para]
 
         command = self.url + 'run'
-        self.response = requests.post(command, files=param, headers={'User-Agent':'ips-client'})
+        try:
+            self.response = requests.post(command, files=param, headers={'User-Agent':'ips-client'})
+        except self.ConnectionError:
+            sys.error.write( f'Connection Error: {command}')
+            return False
 
         if show_query:
             # print out query if requested
