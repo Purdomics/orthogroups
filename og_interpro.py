@@ -9,6 +9,7 @@ import argparse
 import time
 import datetime
 import sys
+import pickle
 from os.path import basename
 
 from sequence.fasta import Fasta
@@ -85,11 +86,14 @@ def opensafe(filename, mode):
     return fh
 
 
-def interpro_setup(fasta):
+def interpro_setup(fasta, og):
     """---------------------------------------------------------------------------------------------
-    creates a new Interpro object and loads the parameters for one search.
+    creates a new Interpro object and loads the parameters for one search. The orthogroup is
+    prefixed to the title so all results from the same og begin the same. The prefixed ID is stored
+    in the Interpro object in the title attribute.
 
     :param fasta: Fasta         query sequence object
+    : param og: string          orthogroup for this sequence
     :return: Interpro           Interpro search object
     ---------------------------------------------------------------------------------------------"""
     # TODO move to manager or drop?
@@ -98,7 +102,7 @@ def interpro_setup(fasta):
     ips.application_select(['PfamA', 'SMART', 'PrositePatterns', 'CDD', 'NCBIfam', 'PIRSF', 'SuperFamily'])
     ips.output_select('json')
     ips.parameter_select({'goterms': True, 'pathways': False})
-    ips.title = fasta.id
+    ips.title = f'{og}_{fasta.id}'
     fasta.seq = fasta.seq.rstrip('*')  # interproscan doesn't like * at the end
     ips.sequence = fasta.format()
 
@@ -109,8 +113,7 @@ def next_og_sequence(ogs, fasta):
     """---------------------------------------------------------------------------------------------
     Generator for the main loop, iterates over all OGs and all sequences in each OG.
     Yields a fasta object with the next query sequence, and its OG.
-    If all orthogroups have
-    been processed, returns None.
+    If all orthogroups have been processed, returns None.
 
     :param ogs: list        strings with OG sequence file names
     :param fasta: Fasta     Fasta object with query sequences from current OG
@@ -175,6 +178,7 @@ class InterproscanManager:
             submitted = []      list of submitted Interpro objects
             finished = []       list of completed Interpro objects
             failed = []         list of failed Interpro objects
+            save = []           list of jobs ready to pickled and save to disk
             batch_limit = 3     maximun number of jobs to submit in a batch
             poll_time = 30      sleep time after polling
             poll_max = 50       maximum times to poll before giving up (job is failed)
@@ -182,21 +186,23 @@ class InterproscanManager:
         self.submitted = []
         self.finished = []
         self.failed = []
+        self.save = []
         self.batch_limit = batch_limit
         self.poll_time = poll_time
         self.poll_max = poll_max
 
-    def submit(self, fasta):
+    def submit(self, fasta, og):
         """---------------------------------------------------------------------------------------------
         submit jobs to interproscan service, up to submit_max jobs can be queued
 
         :param fasta: Fasta             sequence for submission
+        :param og: string               orthogroup for this sequence
         :return:
         ---------------------------------------------------------------------------------------------"""
         ip_submitted = self.submitted
         ip_failed = self.failed
         if len(ip_submitted) < self.batch_limit:
-            ips = interpro_setup(fasta)
+            ips = interpro_setup(fasta, og)
             print(f'submitting {og}:{fasta.id}')
 
             if not ips.submit(show_query=False):
@@ -221,7 +227,6 @@ class InterproscanManager:
             return
 
         tries = 0
-        i = 0
         while ip_submitted:
             ips = ip_submitted.pop()
             tries += 1
@@ -242,6 +247,41 @@ class InterproscanManager:
 
         return
 
+    def getresult(self):
+        """-----------------------------------------------------------------------------------------
+
+        :return:
+        -----------------------------------------------------------------------------------------"""
+        finished = self.finished
+        if not finished:
+            return
+
+        # parse finished jobs and extract desired information
+        while finished:
+            thisjob = finished.pop()
+            thisjob.result()
+            self.save.append(thisjob)
+            self.save_as_pickle(thisjob)
+            print(thisjob.content)
+
+        return len(self.save)
+
+    @staticmethod
+    def save_as_pickle(ips, pickledir):
+        """-----------------------------------------------------------------------------------------
+        write a pickle file with the interproscan result. the filename is the job title with |
+        converted to _
+
+        :param ips: Interpro        object with search result
+        :param pickledir: string    directory to store pickle files in
+        :return: True
+        -----------------------------------------------------------------------------------------"""
+        picklename = ips.title.replace('|', '_')
+        status = None
+        with open(picklename, 'wb') as picklefile:
+            status = pickle.dump(ips, picklefile, pickle.HIGHEST_PROTOCOL)
+
+        return True
 
 # ==================================================================================================
 # Main
@@ -264,9 +304,9 @@ if __name__ == '__main__':
         s = ''
     sys.stderr.write(f'\n{og_n} orthogroup{s} read from {opt.orthogroup}\n')
 
-    # setup the interproscan searches, all the searches can be done through a single object
+    # set up the interproscan searches, all the searches can be done through a single object
 
-    ips_manager = InterproscanManager(batch_limit=2)
+    ips_manager = InterproscanManager(batch_limit=1)
 
     done = False
     fasta = Fasta()
@@ -278,14 +318,10 @@ if __name__ == '__main__':
         # use one Interpro object for each sequence
 
         if len(ips_manager.submitted) < ips_manager.batch_limit:
-            ips_manager.submit(sequence)
+            ips_manager.submit(sequence, og)
         else:
             ips_manager.poll()
 
-        # if ips_finished:
-        #     # parse finished jobs and extract desired information
-        #     print('collecting result')
-        #     ips.result()
-        #     print(ips.content)
+        ips_manager.getresult()
 
     exit(0)
