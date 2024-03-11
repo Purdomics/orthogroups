@@ -10,7 +10,8 @@ import time
 import datetime
 import sys
 import pickle
-from os.path import basename
+from os.path import basename, exists
+from os import mkdir
 
 from sequence.fasta import Fasta
 from interpro.interpro import Interpro
@@ -93,7 +94,7 @@ def interpro_setup(fasta, og):
     in the Interpro object in the title attribute.
 
     :param fasta: Fasta         query sequence object
-    : param og: string          orthogroup for this sequence
+    :param og: string          orthogroup for this sequence
     :return: Interpro           Interpro search object
     ---------------------------------------------------------------------------------------------"""
     # TODO move to manager or drop?
@@ -129,7 +130,7 @@ def next_og_sequence(ogs, fasta):
 
         # if an iterator is set try to get a sequence
         if fasta_iter:
-            # print(f'iter exists {fasta_iter}')
+            print(f'iter exists {fasta_iter}')
             try:
                 # success
                 query = next(fasta_iter)
@@ -140,7 +141,9 @@ def next_og_sequence(ogs, fasta):
                 fasta_iter = None
 
             if query:
+                print(f'query found ({query})')
                 yield fasta, og
+                continue
 
         # no query could be obtained from current iterator, the current file is finished, look for the
         # next one in ogs
@@ -148,14 +151,14 @@ def next_og_sequence(ogs, fasta):
         if ogs:
             # OG list has more files
             ogfilename = ogs.pop()
-            # print(f'new og {ogfilename}')
+            print(f'new og {ogfilename}')
             fasta = Fasta(filename=ogfilename, mode='r')
             og = basename(ogfilename)
             og = og[:og.rindex('.')]
             fasta_iter = iter(fasta)
             query = next(fasta_iter)
             yield fasta, og
-            # print(f'iter exists {fasta_iter}')
+            print(f'iter exists {fasta_iter}')
 
         # no more sequences in fasta file, and no more OGs to process - we are done, break out of
         # forever loop
@@ -171,8 +174,9 @@ class InterproscanManager:
     """=============================================================================================
     handle the sumbmission, polling, retrieval, and processing of searches
     ============================================================================================="""
+    n = 0
 
-    def __init__(self, batch_limit=30, poll_time=30, poll_max=50):
+    def __init__(self, batch_limit=30, poll_time=30, poll_max=50, pkl='pkl'):
         """-----------------------------------------------------------------------------------------
         Attributes
             submitted = []      list of submitted Interpro objects
@@ -190,23 +194,30 @@ class InterproscanManager:
         self.batch_limit = batch_limit
         self.poll_time = poll_time
         self.poll_max = poll_max
+        self.pkl = f'{pkl}/'
+        if not exists(pkl):
+            # make sure output directory exists
+            mkdir(pkl)
+
 
     def submit(self, fasta, og):
-        """---------------------------------------------------------------------------------------------
+        """-----------------------------------------------------------------------------------------
         submit jobs to interproscan service, up to submit_max jobs can be queued
 
         :param fasta: Fasta             sequence for submission
         :param og: string               orthogroup for this sequence
         :return:
-        ---------------------------------------------------------------------------------------------"""
+        -----------------------------------------------------------------------------------------"""
         ip_submitted = self.submitted
         ip_failed = self.failed
         if len(ip_submitted) < self.batch_limit:
             ips = interpro_setup(fasta, og)
-            print(f'submitting {og}:{fasta.id}')
+            print(f'submitting {og}:{fasta.id}\n')
 
+            self.n += 1
             if not ips.submit(show_query=False):
                 ip_failed.append(ips)
+                sys.stderr.write(f'{ips.title} failed\n')
             else:
                 ip_submitted.append(ips)
 
@@ -261,13 +272,13 @@ class InterproscanManager:
             thisjob = finished.pop()
             thisjob.result()
             self.save.append(thisjob)
-            self.save_as_pickle(thisjob)
-            print(thisjob.content)
+            self.save_as_pickle(thisjob, self.pkl)
+            # print(thisjob.content)
 
         return len(self.save)
 
     @staticmethod
-    def save_as_pickle(ips, pickledir):
+    def save_as_pickle(ips, pickledir='./'):
         """-----------------------------------------------------------------------------------------
         write a pickle file with the interproscan result. the filename is the job title with |
         converted to _
@@ -276,12 +287,13 @@ class InterproscanManager:
         :param pickledir: string    directory to store pickle files in
         :return: True
         -----------------------------------------------------------------------------------------"""
-        picklename = ips.title.replace('|', '_')
+        picklename = pickledir + ips.title.replace('|', '_') + '.pkl'
         status = None
         with open(picklename, 'wb') as picklefile:
             status = pickle.dump(ips, picklefile, pickle.HIGHEST_PROTOCOL)
 
         return True
+
 
 # ==================================================================================================
 # Main
@@ -306,7 +318,7 @@ if __name__ == '__main__':
 
     # set up the interproscan searches, all the searches can be done through a single object
 
-    ips_manager = InterproscanManager(batch_limit=1)
+    ips_manager = InterproscanManager(batch_limit=5, pkl=opt.out)
 
     done = False
     fasta = Fasta()
@@ -323,5 +335,6 @@ if __name__ == '__main__':
             ips_manager.poll()
 
         ips_manager.getresult()
+
 
     exit(0)
