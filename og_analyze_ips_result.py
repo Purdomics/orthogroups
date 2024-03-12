@@ -5,13 +5,13 @@ gathers the resuls and summarizes by orthogroup
 Michael Gribskov     12 March 2024
 ================================================================================================="""
 import argparse
-import sys
-import time
+# import time
 import datetime
 import glob
+import json
 import os.path
 import pickle
-import json
+import sys
 
 
 class Og:
@@ -70,7 +70,6 @@ class Match:
         :param hit: dict        interpro match data structure
         :return: None
         -----------------------------------------------------------------------------------------"""
-        # TODO what about repeated motifs?
         self.evalue = hit['locations'][0]['evalue']
         self.querypos = [hit['locations'][0]['start'], hit['locations'][0]['end']]
         self.subjpos = [None, None]
@@ -88,7 +87,6 @@ class Match:
         :param hit: dict        interpro match data structure
         :return: None
         -----------------------------------------------------------------------------------------"""
-        # TODO what about repeated motifs?
         self.evalue = 0
         self.querypos = [hit['locations'][0]['start'], hit['locations'][0]['end']]
         self.subjpos = [None, None]
@@ -137,6 +135,7 @@ def expand_input(filespec):
     ---------------------------------------------------------------------------------------------"""
     ogfiles = set()
     oglist = []
+    this_og = None
     for f in glob.glob(filespec):
         dir, fname = os.path.split(f)
         under = fname.index('_')
@@ -166,51 +165,44 @@ def get_matches(ip):
     :return: 
     ---------------------------------------------------------------------------------------------"""
     all = []
-    ip_parsed = json.loads(interpro.content)
+    ip_parsed = json.loads(ip.content)
     # query = ip_parsed['results'][0]['xref'][0]['id']
     for hit in ip_parsed['results'][0]['matches']:
         # for each match found in this result
         accession = hit['signature']['accession']
         description = f"{hit['signature']['name']}"
+        query = ip_parsed['results'][0]['xref'][0]['id']
         if hit['signature']['description'] != 'None':
             description += f" - {hit['signature']['description']}"
 
         libtype = hit['signature']['signatureLibraryRelease']['library']
         if libtype in ('PFAM', 'NCBIFAM', 'PIRSF', 'SMART'):
-            m = Match(hit['signature']['accession'],
-                      f"{hit['signature']['name']} - {hit['signature']['description']}",
-                      ip_parsed['results'][0]['xref'][0]['id'])
+            m = Match(accession, description, query)
             all.append(m)
             m.pfam(hit)
 
         elif libtype == 'CDD':
-            m = Match(hit['signature']['accession'],
-                      f"{hit['signature']['name']} - {hit['signature']['description']}",
-                      ip_parsed['results'][0]['xref'][0]['id'])
+            m = Match(accession, description, query)
             all.append(m)
             m.cdd(hit)
 
         elif libtype == 'PROSITE_PATTERNS':
-            m = Match(hit['signature']['accession'],
-                      f"{hit['signature']['name']} - {hit['signature']['description']}",
-                      ip_parsed['results'][0]['xref'][0]['id'])
+            m = Match(accession, description, query)
             all.append(m)
             m.prosite_pattern(hit)
 
         else:
             sys.stderr.write(f'get_matches() - skipping motif library ({libtype}\n')
-            m = Match(hit['signature']['accession'],
-                      f"{hit['signature']['name']} - {hit['signature']['description']}",
-                      ip_parsed['results'][0]['xref'][0]['id'])
+            sys.stderr.write(f'Tryng to parse with generic parser\n\n')
+            m = Match(accession, description, query)
             all.append(m)
             m.pfam(hit)
 
-
         try:
-            m.ipnumber = hit['signature']['entry']['accession']
-        except:
+            m.ipr_number = hit['signature']['entry']['accession']
+        except TypeError:
             # no ipr accession number
-            m.ipnumber = 'None'
+            m.ipr_number = 'None'
 
         # GO terms
         if hit['signature']['entry']:
