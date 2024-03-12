@@ -230,10 +230,15 @@ def summarize(matches):
             acc['query'].append(m.query)
             acc['high'] = max(acc['high'], score)
             acc['low'] = min(acc['low'], score)
-            acc['sum'] += log(score)
+            try:
+                ls = log(score)
+            except Exception as e:
+                ls = 0
+
+            acc['sum'] += ls
         else:
             accession[m.accession] = {'query':[m.query], 'description':m.description,
-                                      'high':score, 'low':score, 'sum':log(score)}
+                                      'high':score, 'low':score, 'sum':ls}
 
     for a in accession:
         acc = accession[a]
@@ -241,10 +246,10 @@ def summarize(matches):
         acc['sum'] = exp(acc['sum'])
 
         sys.stdout.write(f"\n\tFeature: {a}: {accession[a]['description']}\n")
-        sys.stdout.write(f"\tLow score:\t{accession[a]['low']}\n")
         sys.stdout.write(f"\tNumber of hits:\t{len(accession[a]['query'])}\n")
+        sys.stdout.write(f"\tLow score:\t{accession[a]['low']}\n")
         sys.stdout.write(f"\tHigh score:\t{accession[a]['high']}\n")
-        sys.stdout.write(f"\tMean score:\t{accession[a]['sum']}\n")
+        sys.stdout.write(f"\tMean score:\t{accession[a]['sum']:.2g}\n")
 
 # --------------------------------------------------------------------------------------------------
 # Main program
