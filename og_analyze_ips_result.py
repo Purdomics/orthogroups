@@ -12,6 +12,7 @@ import json
 import os.path
 import pickle
 import sys
+from math import exp, log
 
 
 class Og:
@@ -211,6 +212,39 @@ def get_matches(ip):
 
     return all
 
+def summarize(matches):
+    """---------------------------------------------------------------------------------------------
+    Summarize the matches to the orthogroup by annotated feature. One could call this on any list of
+    objects, but logically it only makes sens to do it with all the matches in the OG in matches
+
+    :param matches: list of Match
+    :return:
+    ---------------------------------------------------------------------------------------------"""
+    accession = {}
+    sequences = set()
+    for m in matches:
+        sequences.add(m.query)
+        score = m.evalue
+        if m.accession in accession:
+            acc = accession[m.accession]
+            acc['query'].append(m.query)
+            acc['high'] = max(acc['high'], score)
+            acc['low'] = min(acc['low'], score)
+            acc['sum'] += log(score)
+        else:
+            accession[m.accession] = {'query':[m.query], 'description':m.description,
+                                      'high':score, 'low':score, 'sum':log(score)}
+
+    for a in accession:
+        acc = accession[a]
+        acc['sum'] /= len(acc['query'])
+        acc['sum'] = exp(acc['sum'])
+
+        sys.stdout.write(f"\n\tFeature: {a}: {accession[a]['description']}\n")
+        sys.stdout.write(f"\tLow score:\t{accession[a]['low']}\n")
+        sys.stdout.write(f"\tNumber of hits:\t{len(accession[a]['query'])}\n")
+        sys.stdout.write(f"\tHigh score:\t{accession[a]['high']}\n")
+        sys.stdout.write(f"\tMean score:\t{accession[a]['sum']}\n")
 
 # --------------------------------------------------------------------------------------------------
 # Main program
@@ -227,7 +261,9 @@ if __name__ == '__main__':
     for og in oglist:
         matches = []
         interpro = None
+        og_member_n = 0
         for member in og.members:
+            og_member_n += 1
             try:
                 fh = open(member, 'rb')
 
@@ -241,5 +277,8 @@ if __name__ == '__main__':
 
             if interpro:
                 matches += get_matches(interpro)
+
+        summarize( matches)
+        match_n = len(matches)
 
     exit(0)
