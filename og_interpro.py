@@ -214,13 +214,13 @@ class InterproscanManager:
             ips = interpro_setup(fasta, og)
             print(f'submitting {og}:{fasta.id}\n')
             self.log('SUBMIT', ips.title)
-            self.n += 1
+            self.n += 1  # total number of jobs submitted
             if not ips.submit(show_query=False):
                 ip_failed.append(ips)
                 sys.stderr.write(f'{ips.title} failed\n')
                 self.log('FAIL', ips.title)
             else:
-                print('appending to submit')
+                # print('appending to submit')
                 ip_submitted.append(ips)
 
         return
@@ -282,6 +282,8 @@ class InterproscanManager:
             self.save_as_pickle(thisjob, self.pkl)
             # print(thisjob.content)
 
+        # a cooldown period appears to be necessary
+        time.sleep(75)
         return len(self.save)
 
     def log(self, message, jobtitle):
@@ -359,6 +361,7 @@ if __name__ == '__main__':
     # set up the interproscan searches, all the searches can be done through a single object
 
     ips_manager = InterproscanManager(batch_limit=5, pkl=opt.out)
+    # TODO add datetime
     ips_manager.log('\nBEGIN', f'Query={opt.orthogroup}')
 
     done = False
@@ -386,5 +389,10 @@ if __name__ == '__main__':
     if len(ips_manager.submitted):
         ips_manager.poll()
         ips_manager.getresult()
+
+    if ips_manager.failed:
+        sys.stderr.write(f'Failed jobs\n')
+        for ips in ips_manager.failed:
+            sys.stderr.write(f'{ips.sequence.id}\n')
 
     exit(0)
