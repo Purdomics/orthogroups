@@ -88,7 +88,7 @@ class Match:
         :param hit: dict        interpro match data structure
         :return: None
         -----------------------------------------------------------------------------------------"""
-        self.evalue = 0
+        self.evalue = 1
         self.querypos = [hit['locations'][0]['start'], hit['locations'][0]['end']]
         self.subjpos = [None, None]
         self.bounds = hit['locations'][0]['level']
@@ -173,7 +173,8 @@ def get_matches(ip):
         accession = hit['signature']['accession']
         description = f"{hit['signature']['name']}"
         query = ip_parsed['results'][0]['xref'][0]['id']
-        if hit['signature']['description'] != 'None':
+        if hit['signature']['description']:
+            # discription is None
             description += f" - {hit['signature']['description']}"
 
         libtype = hit['signature']['signatureLibraryRelease']['library']
@@ -201,16 +202,19 @@ def get_matches(ip):
 
         try:
             m.ipr_number = hit['signature']['entry']['accession']
+            m.ipr_description = hit['signature']['entry']['description']
         except TypeError:
             # no ipr accession number
             m.ipr_number = 'None'
+            m.ipr_description = ''
 
-        # GO terms
+            # GO terms
         if hit['signature']['entry']:
             for go in hit['signature']['entry']['goXRefs']:
                 m.go.append({'id': go['id'], 'category': go['category'], 'description': go['name']})
 
     return all
+
 
 def summarize(matches):
     """---------------------------------------------------------------------------------------------
@@ -222,34 +226,62 @@ def summarize(matches):
     ---------------------------------------------------------------------------------------------"""
     accession = {}
     sequences = set()
+    species = set()
+    go = {}
+
+    # short name for gene ontology
+    gshort = {'BIOLOGICAL_PROCESS': '(BP)',
+              'MOLECULAR_FUNCTION': '(MF)',
+              'CELLULAR_COMPONENT': '(CC)'}
+
     for m in matches:
         sequences.add(m.query)
         score = m.evalue
+        try:
+            # avoid log zero
+            ls = log(score)
+        except Exception as e:
+            ls = 0
         if m.accession in accession:
             acc = accession[m.accession]
             acc['query'].append(m.query)
             acc['high'] = max(acc['high'], score)
             acc['low'] = min(acc['low'], score)
-            try:
-                ls = log(score)
-            except Exception as e:
-                ls = 0
-
             acc['sum'] += ls
         else:
-            accession[m.accession] = {'query':[m.query], 'description':m.description,
-                                      'high':score, 'low':score, 'sum':ls}
+            accession[m.accession] = {'query': [m.query], 'description': m.description,
+                                      'ipr':   f"{m.ipr_number} - {m.ipr_description}",
+                                      'high':  score, 'low': score, 'sum': ls, 'go':{}}
+        acc = accession[m.accession]
+        for g in m.go:
+            gid = g['id']
+            if gid in acc['go']:
+                acc['go'][gid]['n'] += 1
+            else:
+                acc['go'][gid] = {'n':           1,
+                           'id':          g['id'],
+                           'category':    gshort[g['category']],
+                           'description': g['description']}
 
     for a in accession:
         acc = accession[a]
         acc['sum'] /= len(acc['query'])
         acc['sum'] = exp(acc['sum'])
 
-        sys.stdout.write(f"\n\tFeature: {a}: {accession[a]['description']}\n")
-        sys.stdout.write(f"\tNumber of hits:\t{len(accession[a]['query'])}\n")
-        sys.stdout.write(f"\tLow score:\t{accession[a]['low']}\n")
-        sys.stdout.write(f"\tHigh score:\t{accession[a]['high']}\n")
-        sys.stdout.write(f"\tMean score:\t{accession[a]['sum']:.2g}\n")
+        sys.stdout.write(f"\n\tFeature: {a}: {accession[a]['description']} ")
+        sys.stdout.write(f"(IPR: {accession[a]['ipr']})\n")
+        sys.stdout.write(f"\tNumber: {len(accession[a]['query'])}\t")
+        sys.stdout.write(f"High score: {accession[a]['high']}\t")
+        sys.stdout.write(f"Mean score: {accession[a]['sum']:.2g}\t")
+        sys.stdout.write(f"Low score: {accession[a]['low']}\n")
+        go = accession[a]['go']
+        for gid in sorted(go, key=lambda g: go[g]['category']):
+            goterm = go[gid]
+            sys.stdout.write(f"\tNumber: {goterm['n']}\t{goterm['id']}: {goterm['category']} ")
+            sys.stdout.write(f"{goterm['description']}\n")
+
+    return None
+
 
 # --------------------------------------------------------------------------------------------------
 # Main program
@@ -264,6 +296,7 @@ if __name__ == '__main__':
 
     oglist = expand_input(opt.inputfilename)
     for og in oglist:
+        sys.stdout.write(f'\n{og.name}\t{len(og.members)} sequences')
         matches = []
         interpro = None
         og_member_n = 0
@@ -274,16 +307,14 @@ if __name__ == '__main__':
 
                 # the pickled data is an Interpro object
                 interpro = pickle.load(fh)
-                # print(interpro.content)
 
             except Exception as e:
-                print(e)
-                sys.stderr.write(f'Error reading pickle:{e} - ({member})')
+                sys.stderr.write(f'\nError reading pickle:{e} - ({member})\n\n')
 
             if interpro:
                 matches += get_matches(interpro)
 
-        summarize( matches)
+        summarize(matches)
         match_n = len(matches)
 
     exit(0)
