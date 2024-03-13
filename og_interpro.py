@@ -10,8 +10,9 @@ import time
 import datetime
 import sys
 import pickle
-from os.path import basename, exists
-from os import mkdir
+from os.path import basename, exists, isfile
+from os import mkdir, stat
+import os
 
 from sequence.fasta import Fasta
 from interpro.interpro import Interpro
@@ -35,6 +36,11 @@ def process_command_line():
                     help='output directory for results',
                     type=str,
                     default='./')
+
+    cl.add_argument('-s', '--skip',
+                    help='skip (default: %(default)s)',
+                    action='store_true',
+                    default=False)
 
     # cl.add_argument('-n', '--ntop',
     #                 help='number of top/bottom groups to report',
@@ -87,7 +93,7 @@ def opensafe(filename, mode):
     return fh
 
 
-def interpro_setup(fasta, og):
+def interpro_setup(fasta, og, pickledir):
     """---------------------------------------------------------------------------------------------
     creates a new Interpro object and loads the parameters for one search. The orthogroup is
     prefixed to the title so all results from the same og begin the same. The prefixed ID is stored
@@ -106,6 +112,9 @@ def interpro_setup(fasta, og):
     ips.title = f'{og}_{fasta.id}'
     fasta.seq = fasta.seq.rstrip('*')  # interproscan doesn't like * at the end
     ips.sequence = fasta.format()
+    # get the output file name at the beginning in order to test if it already exists
+    ips.pickle = pickledir + ips.title.replace('|', '_') + '.pkl'
+    # ips.pickle = os.path.join(pickledir, ips.title.replace('|', '_') + '.pkl')
 
     return ips
 
@@ -176,21 +185,24 @@ class InterproscanManager:
     ============================================================================================="""
     n = 0
 
-    def __init__(self, batch_limit=30, poll_time=30, poll_max=50, pkl='pkl'):
+    def __init__(self, opt, batch_limit=30, poll_time=30, poll_max=50, pkl='pkl'):
         """-----------------------------------------------------------------------------------------
         Attributes
             submitted = []      list of submitted Interpro objects
             finished = []       list of completed Interpro objects
             failed = []         list of failed Interpro objects
             save = []           list of jobs ready to pickled and save to disk
+            opt                 command line options (namespeca from argparse)
             batch_limit = 3     maximun number of jobs to submit in a batch
             poll_time = 30      sleep time after polling
             poll_max = 50       maximum times to poll before giving up (job is failed)
+            pkl                 directory for pickled output files
         -----------------------------------------------------------------------------------------"""
         self.submitted = []
         self.finished = []
         self.failed = []
         self.save = []
+        self.opt = opt
         self.batch_limit = batch_limit
         self.poll_time = poll_time
         self.poll_max = poll_max
@@ -202,7 +214,7 @@ class InterproscanManager:
 
     def submit(self, fasta, og):
         """-----------------------------------------------------------------------------------------
-        submit jobs to interproscan service, up to submit_max jobs can be queued
+        submit jobs to interproscan service, up to self.batch_limit can be queued
 
         :param fasta: Fasta             sequence for submission
         :param og: string               orthogroup for this sequence
@@ -210,18 +222,36 @@ class InterproscanManager:
         -----------------------------------------------------------------------------------------"""
         ip_submitted = self.submitted
         ip_failed = self.failed
+        # if exists(self.pickle)
         if len(ip_submitted) < self.batch_limit:
-            ips = interpro_setup(fasta, og)
+            ips = interpro_setup(fasta, og, self.pkl)
+
+            if self.opt.skip and exists(ips.pickle):
+                # this sequence exists in the output, skip
+                print(f'skipping {og}:{fasta.id}')
+                return
+
             print(f'submitting {og}:{fasta.id}\n')
-            self.log('SUBMIT', ips.title)
-            self.n += 1  # total number of jobs submitted
-            if not ips.submit(show_query=False):
+
+            self.n += 1  # total number of jobs submitted (class variable)
+
+            tries = 1
+            success = ips.submit(show_query=False)
+            while not success and tries < 3:
+                # try three times to submit with 5 seconds between tries
+                time.sleep(5)
+                success = ips.submit(show_query=False)
+                tries += 1
+
+            if success:
+                # success
+                self.log('SUBMIT', ips.title)
+                ip_submitted.append(ips)
+            else:
+                # failure
                 ip_failed.append(ips)
                 sys.stderr.write(f'{ips.title} failed\n')
-                self.log('FAIL', ips.title)
-            else:
-                # print('appending to submit')
-                ip_submitted.append(ips)
+                self.log('FAIL-SUB', ips.title)
 
         return
 
@@ -251,7 +281,7 @@ class InterproscanManager:
                 ip_finished.append(ips)
                 continue
 
-            # if we reach here at least on job is not finished, push ips back on the stack
+            # if we reach here at least one job is not finished, push ips back on the stack
             ip_submitted.append(ips)
 
             if tries > self.poll_max:
@@ -270,7 +300,7 @@ class InterproscanManager:
         -----------------------------------------------------------------------------------------"""
         finished = self.finished
         if not finished:
-            sys.stderr.write('no finished jobs\n')
+            sys.stderr.write('no finished jobs to retrieve\n')
             return
 
         # parse finished jobs and extract desired information
@@ -312,7 +342,7 @@ class InterproscanManager:
         :param pickledir: string    directory to store pickle files in
         :return: True
         -----------------------------------------------------------------------------------------"""
-        picklename = pickledir + ips.title.replace('|', '_') + '.pkl'
+        picklename = ips.pickle
         status = None
         with open(picklename, 'wb') as picklefile:
             status = pickle.dump(ips, picklefile, pickle.HIGHEST_PROTOCOL)
@@ -360,20 +390,20 @@ if __name__ == '__main__':
 
     # set up the interproscan searches, all the searches can be done through a single object
 
-    ips_manager = InterproscanManager(batch_limit=5, pkl=opt.out)
+    ips_manager = InterproscanManager(opt, batch_limit=3, pkl=opt.out)
     # TODO add datetime
-    ips_manager.log('\nBEGIN', f'Query={opt.orthogroup}')
+    ips_manager.log('\nBEGIN', f'{runstart} Query={opt.orthogroup}')
 
     done = False
     fasta = Fasta()
     for sequence, og in next_og_sequence(ogs, fasta):
-        print(f'sub:{len(ips_manager.submitted):}')
-        print(f'finished:{len(ips_manager.finished):}')
-        print(f'save:{len(ips_manager.save):}')
-        print(f'fail:{len(ips_manager.failed):}')
-        # s = sequence.format()
+        # print(f'sub:{len(ips_manager.submitted):}')
+        # print(f'finished:{len(ips_manager.finished):}')
+        # print(f'save:{len(ips_manager.save):}')
+        # print(f'fail:{len(ips_manager.failed):}')
+        # # s = sequence.format()
         # print(og, s)
-        print(f'{og} submitted')
+        print(f'Submitting {og} {fasta.id}')
 
         # send sequences to interproscan in groups of batch_size, waiting for batches to complete
         # use one Interpro object for each sequence
