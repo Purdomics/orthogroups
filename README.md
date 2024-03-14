@@ -88,4 +88,4 @@ OG0000525       99 sequences
 ```
 ## To do
 * add metadata to allow more flexible selection by og_outliers.py
-** how to store species metadata?
+  * how to store species metadata?
