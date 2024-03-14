@@ -21,7 +21,7 @@ Submit each sequencea in a list of OGs to interproscan. Results are saved as pic
 ```
 usage: og_interpro.py [-h] [-g ORTHOGROUP] [-o OUT] [-s]
 
-Run interpro on selected orthogroups
+Run interproscan on selected orthogroups
 
 optional arguments:
   -h, --help                            show this help message and exit
@@ -35,7 +35,7 @@ optional arguments:
 ```
 usage: og_analyze_ips_result.py [-h] [inputfilename] [outputfilename]
 
-Analyze interpro result for orthogroups
+Analyze interproscan result for orthogroups
 
 positional arguments:
   inputfilename   Intput file name (default: pklfiles/*.pkl)
