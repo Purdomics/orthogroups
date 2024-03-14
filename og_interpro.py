@@ -10,9 +10,9 @@ import time
 import datetime
 import sys
 import pickle
-from os.path import basename, exists, isfile
-from os import mkdir, stat
-import os
+from os.path import basename, exists
+from os import mkdir
+# import os
 
 from sequence.fasta import Fasta
 from interpro.interpro import Interpro
@@ -100,10 +100,10 @@ def interpro_setup(fasta, og, pickledir):
     in the Interpro object in the title attribute.
 
     :param fasta: Fasta         query sequence object
-    :param og: string          orthogroup for this sequence
+    :param og: string           orthogroup for this sequence
+    :param pickledir: string    directory path for pickle output
     :return: Interpro           Interpro search object
     ---------------------------------------------------------------------------------------------"""
-    # TODO move to manager or drop?
     ips = Interpro()
     ips.email = 'mgribsko@purdue.edu'
     ips.application_select(['PfamA', 'SMART', 'PrositePatterns', 'CDD', 'NCBIfam', 'PIRSF', 'SuperFamily'])
@@ -113,7 +113,7 @@ def interpro_setup(fasta, og, pickledir):
     fasta.seq = fasta.seq.rstrip('*')  # interproscan doesn't like * at the end
     ips.sequence = fasta.format()
     # get the output file name at the beginning in order to test if it already exists
-    ips.pickle = pickledir + ips.title.replace('|', '_') + '.pkl'
+    ips.output = pickledir + ips.title.replace('|', '_') + '.pkl'
     # ips.pickle = os.path.join(pickledir, ips.title.replace('|', '_') + '.pkl')
 
     return ips
@@ -214,25 +214,24 @@ class InterproscanManager:
 
     def submit(self, fasta, og):
         """-----------------------------------------------------------------------------------------
-        submit jobs to interproscan service, up to self.batch_limit can be queued
+        Submit jobs to interproscan service, up to self.batch_limit can be queued. interpro_setup()
+        creates a new Interpro object.
 
         :param fasta: Fasta             sequence for submission
         :param og: string               orthogroup for this sequence
-        :return:
+        :return: Bool                   False if skipped, True if submitted
         -----------------------------------------------------------------------------------------"""
         ip_submitted = self.submitted
         ip_failed = self.failed
-        # if exists(self.pickle)
         if len(ip_submitted) < self.batch_limit:
             ips = interpro_setup(fasta, og, self.pkl)
 
-            if self.opt.skip and exists(ips.pickle):
+            if self.opt.skip and exists(ips.output):
                 # this sequence exists in the output, skip
-                print(f'skipping {og}:{fasta.id}')
-                return
+                print(f'\tskipping {og}:{fasta.id}')
+                return False
 
-            print(f'submitting {og}:{fasta.id}\n')
-
+            print(f'\tJob {self.n} - {og}:{fasta.id}')
             self.n += 1  # total number of jobs submitted (class variable)
 
             tries = 1
@@ -253,7 +252,7 @@ class InterproscanManager:
                 sys.stderr.write(f'{ips.title} failed\n')
                 self.log('FAIL-SUB', ips.title)
 
-        return
+        return True
 
     def poll(self):
         """-----------------------------------------------------------------------------------------
@@ -300,7 +299,7 @@ class InterproscanManager:
         -----------------------------------------------------------------------------------------"""
         finished = self.finished
         if not finished:
-            sys.stderr.write('no finished jobs to retrieve\n')
+            # sys.stderr.write('no finished jobs to retrieve\n')
             return
 
         # parse finished jobs and extract desired information
@@ -309,7 +308,7 @@ class InterproscanManager:
             self.log('RETRIEVE', thisjob.title)
             thisjob.result()
             self.save.append(thisjob)
-            self.save_as_pickle(thisjob, self.pkl)
+            self.save_as_pickle(thisjob)
             # print(thisjob.content)
 
         # a cooldown period appears to be necessary
@@ -333,19 +332,17 @@ class InterproscanManager:
         return None
 
     @staticmethod
-    def save_as_pickle(ips, pickledir='./'):
+    def save_as_pickle(ips):
         """-----------------------------------------------------------------------------------------
-        write a pickle file with the interproscan result. the filename is the job title with |
-        converted to _
+        write a pickle file with the interproscan result. the filename is set up in interpro_setup()
+        to check whether it already exists when skipping files
 
         :param ips: Interpro        object with search result
-        :param pickledir: string    directory to store pickle files in
         :return: True
         -----------------------------------------------------------------------------------------"""
-        picklename = ips.pickle
-        status = None
+        picklename = ips.output
         with open(picklename, 'wb') as picklefile:
-            status = pickle.dump(ips, picklefile, pickle.HIGHEST_PROTOCOL)
+            pickle.dump(ips, picklefile, pickle.HIGHEST_PROTOCOL)
 
         return True
 
@@ -390,39 +387,46 @@ if __name__ == '__main__':
 
     # set up the interproscan searches, all the searches can be done through a single object
 
-    ips_manager = InterproscanManager(opt, batch_limit=3, pkl=opt.out)
-    # TODO add datetime
+    ips_manager = InterproscanManager(opt, batch_limit=10, pkl=opt.out)
     ips_manager.log('\nBEGIN', f'{runstart} Query={opt.orthogroup}')
 
-    done = False
     fasta = Fasta()
+    og_old = ''
+    og_n = 0
+    og_job_n = 0    # number of jobs in OG
     for sequence, og in next_og_sequence(ogs, fasta):
         # print(f'sub:{len(ips_manager.submitted):}')
         # print(f'finished:{len(ips_manager.finished):}')
         # print(f'save:{len(ips_manager.save):}')
         # print(f'fail:{len(ips_manager.failed):}')
-        # # s = sequence.format()
-        # print(og, s)
-        print(f'Submitting {og} {fasta.id}')
+        if og != og_old:
+            og_n += 1
+            if og_job_n != 0:
+                print(f'{og_job_n} sequences submitted for orthogroup {og}')
+            print(f'\nStarting orthogroup {og_n}: {og}')
+            og_old = og
+            og_job_n = 0
 
         # send sequences to interproscan in groups of batch_size, waiting for batches to complete
         # use one Interpro object for each sequence
+        og_job_n += ips_manager.submit(sequence, og)
 
-        if len(ips_manager.submitted) < ips_manager.batch_limit:
-            ips_manager.submit(sequence, og)
-        else:
+        # only leave job submission if the desired number of jobs have been submitted
+        if len(ips_manager.submitted) >= ips_manager.batch_limit:
             ips_manager.poll()
+            ips_manager.getresult()
 
-        ips_manager.getresult()
-
-    # get the last jobs
+    # get any remaining job results
     if len(ips_manager.submitted):
         ips_manager.poll()
         ips_manager.getresult()
 
+    sys.stderr.write(f'{ips_manager.n} jobs submitted\n')
     if ips_manager.failed:
         sys.stderr.write(f'Failed jobs\n')
         for ips in ips_manager.failed:
             sys.stderr.write(f'{ips.sequence.id}\n')
+    else:
+        sys.stderr.write(f'No Failed jobs\n')
 
     exit(0)
