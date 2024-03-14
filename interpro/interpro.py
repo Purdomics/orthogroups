@@ -52,6 +52,7 @@ class Interpro(JobManagerAPI):
 
         self.email = ''  # user email (optional)
         self.title = ''  # title for job (optional)
+        self.output = '' # output file name, useful for checking if output already exists
         self.sequence = ''
         self.applications = []
         self.output = 'json'
