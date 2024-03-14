@@ -321,7 +321,7 @@ if __name__ == '__main__':
                 if match:
                     matches += match
                 else:
-                    print(f'json unreadable or no matches {member}')
+                    print(f'\tjson unreadable or no matches {member}')
 
         summarize(matches)
         match_n = len(matches)
