@@ -166,7 +166,12 @@ def get_matches(ip):
     :return: 
     ---------------------------------------------------------------------------------------------"""
     all = []
-    ip_parsed = json.loads(ip.content)
+    try:
+        ip_parsed = json.loads(ip.content)
+    except Exception as e:
+        # sys.stderr.write( f'\n{e} - json error\n')
+        return []
+
     # query = ip_parsed['results'][0]['xref'][0]['id']
     for hit in ip_parsed['results'][0]['matches']:
         # for each match found in this result
@@ -312,7 +317,11 @@ if __name__ == '__main__':
                 sys.stderr.write(f'\nError reading pickle:{e} - ({member})\n\n')
 
             if interpro:
-                matches += get_matches(interpro)
+                match = get_matches(interpro)
+                if match:
+                    matches += match
+                else:
+                    print(f'json unreadable {member}')
 
         summarize(matches)
         match_n = len(matches)
