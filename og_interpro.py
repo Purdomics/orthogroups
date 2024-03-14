@@ -113,7 +113,7 @@ def interpro_setup(fasta, og, pickledir):
     fasta.seq = fasta.seq.rstrip('*')  # interproscan doesn't like * at the end
     ips.sequence = fasta.format()
     # get the output file name at the beginning in order to test if it already exists
-    ips.output = pickledir + ips.title.replace('|', '_') + '.pkl'
+    ips.outputfile = pickledir + ips.title.replace('|', '_') + '.pkl'
     # ips.pickle = os.path.join(pickledir, ips.title.replace('|', '_') + '.pkl')
 
     return ips
@@ -226,7 +226,7 @@ class InterproscanManager:
         if len(ip_submitted) < self.batch_limit:
             ips = interpro_setup(fasta, og, self.pkl)
 
-            if self.opt.skip and exists(ips.output):
+            if self.opt.skip and exists(ips.outputfile):
                 # this sequence exists in the output, skip
                 print(f'\tskipping {og}:{fasta.id}')
                 return False
@@ -312,7 +312,7 @@ class InterproscanManager:
             # print(thisjob.content)
 
         # a cooldown period appears to be necessary
-        time.sleep(75)
+        # time.sleep(75)
         return len(self.save)
 
     def log(self, message, jobtitle):
@@ -340,7 +340,7 @@ class InterproscanManager:
         :param ips: Interpro        object with search result
         :return: True
         -----------------------------------------------------------------------------------------"""
-        picklename = ips.output
+        picklename = ips.outputfile
         with open(picklename, 'wb') as picklefile:
             pickle.dump(ips, picklefile, pickle.HIGHEST_PROTOCOL)
 
@@ -387,7 +387,7 @@ if __name__ == '__main__':
 
     # set up the interproscan searches, all the searches can be done through a single object
 
-    ips_manager = InterproscanManager(opt, batch_limit=10, pkl=opt.out)
+    ips_manager = InterproscanManager(opt, batch_limit=20, pkl=opt.out)
     ips_manager.log('\nBEGIN', f'{runstart} Query={opt.orthogroup}')
 
     fasta = Fasta()
