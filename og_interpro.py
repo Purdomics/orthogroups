@@ -24,7 +24,7 @@ def process_command_line():
     :return:
     ---------------------------------------------------------------------------------------------"""
     cl = argparse.ArgumentParser(
-        description='Run interpro on selected orthogroups',
+        description='Run interproscan on selected orthogroups',
         formatter_class=lambda prog: argparse.HelpFormatter(prog, width=120, max_help_position=40)
         )
     cl.add_argument('-g', '--orthogroup',

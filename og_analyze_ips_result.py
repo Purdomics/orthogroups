@@ -107,7 +107,7 @@ def process_command_line():
     ---------------------------------------------------------------------------------------------"""
     cl = argparse.ArgumentParser(
         prog='og_analyze_ips_result.py',
-        description='Analyze interpro result for orthogroups',
+        description='Analyze interproscsan result for orthogroups',
         formatter_class=lambda prog: argparse.HelpFormatter(prog, width=120, max_help_position=40)
         )
 
