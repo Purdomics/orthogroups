@@ -8,7 +8,8 @@ from api.jobmanager_api import JobManagerAPI
 class Interpro(JobManagerAPI):
     """=============================================================================================
     Interpro class for running interproscan.  See the end of the file for usage examples.
-    Can be used by itself or from jobmanager.py
+    Can be used by itself or from jobmanager.py. Each instance corresponds to a single job
+    submission and server responses.
 
     25 December 2018    Michael Gribskov
     ============================================================================================="""
@@ -26,11 +27,7 @@ class Interpro(JobManagerAPI):
     # htmltarball - The results of the job in a tarball zip file
     # sequence - Input sequence as seen by the tool
     # submission - The submission details which were submitted as a job
-    # available = {'applications':['TIGRFAM', 'SFLD', 'Phobius', 'SignalP', 'SignalP_EUK',
-    #                              'SignalP_GRAM_POSITIVE', 'SignalP_GRAM_NEGATIVE', 'SUPERFAMILY',
-    #                              'Panther', 'Gene3d', 'HAMAP', 'PrositeProfiles',
-    #                              'PrositePatterns', 'Coils', 'SMART', 'CDD', 'PRINTS', 'PfamA',
-    #                              'MobiDBLite', 'PIRSF', 'TMHMM', ],
+
     available = {'applications': ['NCBIfam', 'SFLD', 'Phobius', 'SignalP', 'SignalP_EUK',
                                   'SignalP_GRAM_POSITIVE', 'SignalP_GRAM_NEGATIVE', 'SUPERFAMILY',
                                   'Panther', 'Gene3d', 'HAMAP', 'PrositeProfiles',

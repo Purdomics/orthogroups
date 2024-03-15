@@ -14,11 +14,11 @@ class Jobmanager:
     Jobs communicate with the jobmanger using JobManager_API.message
 
     manage submission of jobs using defined APIs. APIs should implement
-        submit
-        status
-        result
-        clone (inherited)
-        poke  (inherited)
+        submit  submit job to server
+        status  poll job status
+        result  retrieve result from server
+        clone   used to duplicate from template, basic version inherited from JobManager_API
+        poke    identify class, inherited from JobManager_API
 
     Michael Gribskov     02 April 2021
     ============================================================================================="""

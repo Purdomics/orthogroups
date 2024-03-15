@@ -192,7 +192,7 @@ class InterproscanManager:
             finished = []       list of completed Interpro objects
             failed = []         list of failed Interpro objects
             save = []           list of jobs ready to pickled and save to disk
-            opt                 command line options (namespeca from argparse)
+            opt                 command line options (namespace from argparse)
             batch_limit = 3     maximun number of jobs to submit in a batch
             poll_time = 30      sleep time after polling
             poll_max = 50       maximum times to poll before giving up (job is failed)

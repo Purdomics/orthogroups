@@ -56,7 +56,7 @@ class JobManagerAPI(ABC):
 
     def poke(self):
         """-----------------------------------------------------------------------------------------
-        Return a signature string.  Useful to identify the when class it is used as a callback
+        Return a signature string.  Useful to identify the class when it is used as a callback
 
         INHERITABLE
 
