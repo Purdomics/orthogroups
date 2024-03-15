@@ -141,9 +141,9 @@ def expand_input(filespec):
         dir, fname = os.path.split(f)
         under = fname.index('_')
         og = fname[:under]
-        print(og)
+        # print(og)
         if not og in ogfiles:
-            # assumes that files will be ordered by OG, this is true if written by og_interpro.py
+            # new OG group when first member is seen
             this_og = Og(og)
             ogfiles.add(og)
             oglist.append(this_og)
@@ -301,7 +301,7 @@ if __name__ == '__main__':
     # sys.stderr.write(f'\tOutput directory: {opt.outputfilename}\n')
 
     oglist = expand_input(opt.inputfilename)
-    print(oglist)
+    # print(oglist)
     for og in oglist:
         sys.stdout.write(f'\n{og.name}\t{len(og.members)} sequences\n')
         matches = []
