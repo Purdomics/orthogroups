@@ -137,7 +137,7 @@ def expand_input(filespec):
     ogfiles = set()
     oglist = []
     this_og = None
-    for f in glob.glob(filespec):
+    for f in sorted(glob.glob(filespec)):
         dir, fname = os.path.split(f)
         under = fname.index('_')
         og = fname[:under]
