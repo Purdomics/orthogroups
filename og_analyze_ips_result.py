@@ -112,16 +112,16 @@ def process_command_line():
         )
 
     cl.add_argument('inputfilename',
-                    help="Intput file name (default: %(default)s)",
+                    help="Input file name (default: %(default)s)",
                     type=str,
                     nargs='?',
                     default='pklfiles/*.pkl')  # positional argument
 
-    cl.add_argument('outputfilename',
-                    help="Output file name (default: %(default)s)",
-                    type=str,
-                    nargs='?',
-                    default='og.analysis.txt')  # positional argument
+    # cl.add_argument('outputfilename',
+    #                 help="Output file name (default: %(default)s)",
+    #                 type=str,
+    #                 nargs='?',
+    #                 default='og.analysis.txt')  # positional argument
 
     return cl.parse_args()
 
@@ -297,11 +297,11 @@ if __name__ == '__main__':
 
     sys.stderr.write(f'\nog_analyze_ips_result.py {runstart}\n')
     sys.stderr.write(f'\tOG input: {opt.inputfilename}\n')
-    sys.stderr.write(f'\tOutput directory: {opt.outputfilename}\n')
+    # sys.stderr.write(f'\tOutput directory: {opt.outputfilename}\n')
 
     oglist = expand_input(opt.inputfilename)
     for og in oglist:
-        sys.stdout.write(f'\n{og.name}\t{len(og.members)} sequences')
+        sys.stdout.write(f'\n{og.name}\t{len(og.members)} sequences\n')
         matches = []
         interpro = None
         og_member_n = 0
@@ -321,7 +321,7 @@ if __name__ == '__main__':
                 if match:
                     matches += match
                 else:
-                    print(f'\tjson unreadable or no matches {member}')
+                    sys.stdout.write(f'\tjson unreadable or no matches {member}\n')
 
         summarize(matches)
         match_n = len(matches)
